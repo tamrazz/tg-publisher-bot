@@ -12,7 +12,7 @@ def compose_post(
     Assemble the final Telegram post HTML string.
 
     If *announcement* is provided:
-        <announcement text (includes © copyright line if present)>
+        <announcement text>
 
         <source_url>
 

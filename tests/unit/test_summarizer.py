@@ -2,11 +2,48 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.ai.base import BaseAIProvider
+from src.ai.base import SUMMARIZE_SYSTEM_PROMPT, BaseAIProvider
 from src.ai.hashtag_matcher import match_hashtags
 from src.ai.summarizer import summarize
 from src.extractors.base import ExtractedContent
 from src.extractors.detector import ContentType
+
+
+# ---------------------------------------------------------------------------
+# SUMMARIZE_SYSTEM_PROMPT contract tests
+# ---------------------------------------------------------------------------
+
+
+def test_prompt_requires_russian_language() -> None:
+    assert "русском языке" in SUMMARIZE_SYSTEM_PROMPT
+    assert "иностранном языке" in SUMMARIZE_SYSTEM_PROMPT
+
+
+def test_prompt_no_copyright_instruction() -> None:
+    # Must not instruct the AI to append a copyright symbol
+    assert "©" not in SUMMARIZE_SYSTEM_PROMPT
+    # Must not contain a positive "add authorship" instruction
+    assert "добавь строку авторства" not in SUMMARIZE_SYSTEM_PROMPT
+
+
+def test_prompt_enforces_brevity() -> None:
+    # Hard cap: no more than 3 short sentences
+    assert "Не более 3 коротких предложений" in SUMMARIZE_SYSTEM_PROMPT
+
+
+def test_prompt_allows_limited_emoji() -> None:
+    # Emojis allowed but capped at 2, only at start or end
+    assert "эмодзи" in SUMMARIZE_SYSTEM_PROMPT
+    assert "не более 2 эмодзи" in SUMMARIZE_SYSTEM_PROMPT
+
+
+def test_prompt_emoji_position_constraint() -> None:
+    # Emojis must be restricted to start or end of the announcement
+    assert "в начале или в конце" in SUMMARIZE_SYSTEM_PROMPT
+    assert "не в середине" in SUMMARIZE_SYSTEM_PROMPT
+
+
+# ---------------------------------------------------------------------------
 
 
 def make_content(
