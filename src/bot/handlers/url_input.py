@@ -6,11 +6,17 @@ from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from src.bot.keyboards import initial_choice_keyboard, moderation_keyboard
+from src.bot.keyboards import (
+    announcement_actions_keyboard,
+    duplicate_url_keyboard,
+    moderation_keyboard,
+)
 from src.bot.states import ModerationStates
 from src.db.models import User, UserRole
 from src.db.session import AsyncSessionLocal
-from src.services.pipeline import process_url, publish_pending_post, reject_post
+from src.db.repository import get_post
+from src.publisher.channel import publish_to_channel
+from src.services.pipeline import process_url, publish_pending_post, regenerate_announcement, reject_post
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -55,8 +61,14 @@ async def handle_url_message(message: Message, state: FSMContext, user: User | N
                 url,
                 result.post.id,
             )
+            preview = (
+                f"⚠️ <b>Ссылка уже была обработана</b> (пост #{result.post.id}).\n\n"
+                f"{result.post_text}"
+            )
             await processing_msg.edit_text(
-                f"⚠️ Эта ссылка уже была обработана (пост #{result.post.id})."
+                preview,
+                parse_mode="HTML",
+                reply_markup=duplicate_url_keyboard(result.post.id),
             )
             return
 
@@ -67,7 +79,7 @@ async def handle_url_message(message: Message, state: FSMContext, user: User | N
         await processing_msg.edit_text(
             preview,
             parse_mode="HTML",
-            reply_markup=initial_choice_keyboard(result.post.id),
+            reply_markup=announcement_actions_keyboard(result.post.id),
         )
 
     except Exception as exc:
@@ -214,3 +226,167 @@ async def handle_edit_start(
     await query.message.answer(  # type: ignore[union-attr]
         f"✏️ Введите новый текст для поста #{post_id}:"
     )
+
+
+@router.callback_query(F.data.startswith("dup_republish:"))
+async def handle_dup_republish(
+    query: CallbackQuery, state: FSMContext, user: User | None = None
+) -> None:
+    """Republish an existing post to the channel as-is."""
+    telegram_id = query.from_user.id if query.from_user else 0
+    if not _is_admin_or_owner(user):
+        await query.answer("Нет прав.")
+        return
+
+    post_id = int(query.data.split(":")[1])  # type: ignore[union-attr]
+    logger.info("[FIX] handle_dup_republish: post_id=%d telegram_id=%d", post_id, telegram_id)
+
+    await query.answer("Публикую...")
+    bot: Bot = query.bot  # type: ignore[assignment]
+
+    try:
+        async with AsyncSessionLocal() as session:
+            post = await get_post(session, post_id)
+            if post is None or not post.post_text:
+                await query.message.edit_text("❌ Пост не найден или текст пуста.")  # type: ignore[union-attr]
+                return
+            await publish_to_channel(bot, post.post_text)
+            await session.commit()
+
+        logger.info("[FIX] handle_dup_republish: published post_id=%d", post_id)
+        await query.message.edit_text(f"✅ Пост #{post_id} опубликован повторно.")  # type: ignore[union-attr]
+
+    except Exception as exc:
+        logger.error("[FIX] handle_dup_republish: error post_id=%d: %s", post_id, exc, exc_info=True)
+        await query.message.edit_text(  # type: ignore[union-attr]
+            f"❌ Ошибка публикации: <code>{html.escape(str(exc))}</code>", parse_mode="HTML"
+        )
+
+
+@router.callback_query(F.data.startswith("dup_reprocess:"))
+async def handle_dup_reprocess(
+    query: CallbackQuery, state: FSMContext, user: User | None = None
+) -> None:
+    """Re-run the full pipeline for an already-processed URL, generating a fresh announcement."""
+    telegram_id = query.from_user.id if query.from_user else 0
+    if not _is_admin_or_owner(user):
+        await query.answer("Нет прав.")
+        return
+
+    post_id = int(query.data.split(":")[1])  # type: ignore[union-attr]
+    logger.info("[FIX] handle_dup_reprocess: post_id=%d telegram_id=%d", post_id, telegram_id)
+
+    await query.answer("Генерирую заново...")
+    bot: Bot = query.bot  # type: ignore[assignment]
+
+    try:
+        async with AsyncSessionLocal() as session:
+            existing = await get_post(session, post_id)
+            if existing is None:
+                await query.message.edit_text("❌ Пост не найден.")  # type: ignore[union-attr]
+                return
+            url = existing.url
+
+        await query.message.edit_text("⏳ Перегенерирую анонс...")  # type: ignore[union-attr]
+
+        async with AsyncSessionLocal() as session:
+            result = await process_url(
+                url=url,
+                created_by=telegram_id,
+                session=session,
+                bot=bot,
+                moderate=True,
+                force=True,
+            )
+            await session.commit()
+
+        logger.info("[FIX] handle_dup_reprocess: new post_id=%d url=%r", result.post.id, url)
+        preview = (
+            f"📋 <b>Предварительный просмотр</b> (пост #{result.post.id}):\n\n{result.post_text}"
+        )
+        await query.message.edit_text(  # type: ignore[union-attr]
+            preview,
+            parse_mode="HTML",
+            reply_markup=announcement_actions_keyboard(result.post.id),
+        )
+
+    except Exception as exc:
+        logger.error("[FIX] handle_dup_reprocess: error post_id=%d: %s", post_id, exc, exc_info=True)
+        await query.message.edit_text(  # type: ignore[union-attr]
+            f"❌ Ошибка обработки: <code>{html.escape(str(exc))}</code>", parse_mode="HTML"
+        )
+
+
+@router.callback_query(F.data.startswith("regenerate:"))
+async def handle_regenerate(
+    query: CallbackQuery, state: FSMContext, user: User | None = None
+) -> None:
+    """Re-generate the announcement using cached raw_content (no re-transcription)."""
+    telegram_id = query.from_user.id if query.from_user else 0
+    if not _is_admin_or_owner(user):
+        await query.answer("Нет прав.")
+        return
+
+    post_id = int(query.data.split(":")[1])  # type: ignore[union-attr]
+    logger.info("[FIX] handle_regenerate: post_id=%d telegram_id=%d", post_id, telegram_id)
+
+    await query.answer("Перегенерирую...")
+    await query.message.edit_text("⏳ Перегенерирую анонс...")  # type: ignore[union-attr]
+
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await regenerate_announcement(post_id=post_id, session=session)
+            await session.commit()
+
+        if result is None:
+            await query.message.edit_text("❌ Пост не найден.")  # type: ignore[union-attr]
+            return
+
+        post, post_text = result
+        logger.info("[FIX] handle_regenerate: done post_id=%d", post_id)
+        preview = f"📋 <b>Предварительный просмотр</b> (пост #{post_id}):\n\n{post_text}"
+        await query.message.edit_text(  # type: ignore[union-attr]
+            preview,
+            parse_mode="HTML",
+            reply_markup=announcement_actions_keyboard(post_id),
+        )
+
+    except Exception as exc:
+        logger.error("[FIX] handle_regenerate: error post_id=%d: %s", post_id, exc, exc_info=True)
+        await query.message.edit_text(  # type: ignore[union-attr]
+            f"❌ Ошибка перегенерации: <code>{html.escape(str(exc))}</code>", parse_mode="HTML"
+        )
+
+
+@router.callback_query(F.data.startswith("edit_announce:"))
+async def handle_edit_announce_start(
+    query: CallbackQuery, state: FSMContext, user: User | None = None
+) -> None:
+    """Enter editing mode for an announcement (shows preview after editing, does not publish)."""
+    telegram_id = query.from_user.id if query.from_user else 0
+    if not _is_admin_or_owner(user):
+        await query.answer("Нет прав.")
+        return
+
+    post_id = int(query.data.split(":")[1])  # type: ignore[union-attr]
+    logger.info("[FIX] handle_edit_announce_start: post_id=%d telegram_id=%d", post_id, telegram_id)
+
+    await state.set_state(ModerationStates.editing_announce)
+    await state.update_data(editing_post_id=post_id)
+    await query.answer()
+    await query.message.answer(  # type: ignore[union-attr]
+        f"✏️ Введите новый текст для поста #{post_id}:"
+    )
+
+
+@router.callback_query(F.data.startswith("dup_cancel:"))
+async def handle_dup_cancel(
+    query: CallbackQuery, state: FSMContext, user: User | None = None
+) -> None:
+    """Cancel — do nothing and dismiss the duplicate URL message."""
+    telegram_id = query.from_user.id if query.from_user else 0
+    post_id = int(query.data.split(":")[1])  # type: ignore[union-attr]
+    logger.info("[FIX] handle_dup_cancel: post_id=%d telegram_id=%d", post_id, telegram_id)
+
+    await query.answer("Отменено.")
+    await query.message.edit_text(f"❌ Отменено (пост #{post_id}).")  # type: ignore[union-attr]

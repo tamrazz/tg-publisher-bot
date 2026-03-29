@@ -27,6 +27,64 @@ def initial_choice_keyboard(post_id: int) -> InlineKeyboardMarkup:
     )
 
 
+def duplicate_url_keyboard(post_id: int) -> InlineKeyboardMarkup:
+    """
+    Keyboard shown when a URL was already processed:
+    [🔁 Опубликовать ещё раз]
+    [♻️ Сгенерировать заново]
+    [❌ Отмена]
+    """
+    logger.debug("duplicate_url_keyboard: post_id=%d", post_id)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔁 Опубликовать ещё раз",
+                    callback_data=f"dup_republish:{post_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="♻️ Сгенерировать заново",
+                    callback_data=f"dup_reprocess:{post_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Отмена",
+                    callback_data=f"dup_cancel:{post_id}",
+                ),
+            ],
+        ]
+    )
+
+
+def announcement_actions_keyboard(post_id: int) -> InlineKeyboardMarkup:
+    """
+    Keyboard shown after a new announcement is generated:
+    [✅ Опубликовать] [♻️ Перегенерировать] [✏️ Изменить]
+    """
+    logger.debug("announcement_actions_keyboard: post_id=%d", post_id)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Опубликовать",
+                    callback_data=f"publish_now:{post_id}",
+                ),
+                InlineKeyboardButton(
+                    text="♻️ Перегенерировать",
+                    callback_data=f"regenerate:{post_id}",
+                ),
+                InlineKeyboardButton(
+                    text="✏️ Изменить",
+                    callback_data=f"edit_announce:{post_id}",
+                ),
+            ]
+        ]
+    )
+
+
 def moderation_keyboard(post_id: int) -> InlineKeyboardMarkup:
     """
     Moderation inline keyboard:

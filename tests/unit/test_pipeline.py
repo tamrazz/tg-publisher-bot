@@ -196,3 +196,86 @@ async def test_pipeline_url_only_when_no_ai(monkeypatch) -> None:
 
     # post_text should be just the URL — no announcement, no hashtags
     assert result.post_text == url
+
+
+# ---------------------------------------------------------------------------
+# regenerate_announcement tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_regenerate_announcement_uses_cached_raw_content() -> None:
+    """regenerate_announcement must NOT call get_extractor — uses stored raw_content only."""
+    from src.services import pipeline
+
+    mock_session = MagicMock()
+    url = "https://example.com/cached"
+    fake_post = MagicMock(
+        id=7,
+        url=url,
+        raw_content="Cached transcript text.",
+        content_type=MagicMock(value="youtube"),
+        post_text="Old post text.",
+        status="pending",
+    )
+    updated_post = MagicMock(id=7, post_text="Новый анонс.\n\nhttps://example.com/cached")
+
+    mock_get_extractor = MagicMock()
+
+    with (
+        patch("src.db.repository.get_post", AsyncMock(return_value=fake_post)),
+        patch("src.services.pipeline.summarize", AsyncMock(return_value="Новый анонс.")),
+        patch("src.services.pipeline.list_hashtags", AsyncMock(return_value=[])),
+        patch("src.services.pipeline.match_hashtags", AsyncMock(return_value=[])),
+        patch("src.services.pipeline.update_post_text", AsyncMock(return_value=updated_post)),
+        patch("src.services.pipeline.get_extractor", mock_get_extractor),
+    ):
+        result = await pipeline.regenerate_announcement(post_id=7, session=mock_session)
+
+    assert result is not None
+    post, post_text = result
+    assert post.id == 7
+    assert "Новый анонс." in post_text
+    # Extractor must NOT be called — raw_content is used directly
+    mock_get_extractor.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_regenerate_announcement_returns_none_when_post_missing() -> None:
+    """regenerate_announcement returns None if the post does not exist."""
+    from src.services import pipeline
+
+    mock_session = MagicMock()
+
+    with patch("src.db.repository.get_post", AsyncMock(return_value=None)):
+        result = await pipeline.regenerate_announcement(post_id=999, session=mock_session)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_regenerate_announcement_url_only_when_no_raw_content() -> None:
+    """When raw_content is empty, regenerate produces a URL-only post."""
+    from src.services import pipeline
+
+    mock_session = MagicMock()
+    url = "https://example.com/no-content"
+    fake_post = MagicMock(
+        id=8,
+        url=url,
+        raw_content="",
+        content_type=MagicMock(value="article"),
+        post_text="Old.",
+        status="pending",
+    )
+    updated_post = MagicMock(id=8, post_text=url)
+
+    with (
+        patch("src.db.repository.get_post", AsyncMock(return_value=fake_post)),
+        patch("src.services.pipeline.update_post_text", AsyncMock(return_value=updated_post)),
+    ):
+        result = await pipeline.regenerate_announcement(post_id=8, session=mock_session)
+
+    assert result is not None
+    _, post_text = result
+    assert post_text == url

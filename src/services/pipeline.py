@@ -12,6 +12,7 @@ from src.db.repository import (
     attach_hashtags_to_post,
     create_post,
     get_hashtag_by_tag,
+    get_post_by_url,
     is_url_processed,
     list_hashtags,
     update_post_status,
@@ -39,6 +40,7 @@ async def process_url(
     session: AsyncSession,
     bot: Bot,
     moderate: bool = True,
+    force: bool = False,
 ) -> PipelineResult:
     """
     Full pipeline: detect → extract → summarize → match hashtags → compose
@@ -46,16 +48,18 @@ async def process_url(
 
     If *moderate* is True, the post is saved as pending (admin must approve).
     If *moderate* is False, the post is published immediately.
+    If *force* is True, skip the deduplication check and reprocess the URL.
     """
     logger.info(
-        "process_url: url=%r created_by=%d moderate=%s",
+        "process_url: url=%r created_by=%d moderate=%s force=%s",
         url,
         created_by,
         moderate,
+        force,
     )
 
     # --- Deduplication check ---
-    if await is_url_processed(session, url):
+    if not force and await is_url_processed(session, url):
         logger.warning("process_url: url already processed url=%r", url)
         existing_post = await _get_existing_post(session, url)
         return PipelineResult(
@@ -72,22 +76,34 @@ async def process_url(
     # --- Extract content ---
     extractor = get_extractor(content_type)
     logger.debug("process_url: running extractor=%s url=%r", type(extractor).__name__, url)
-    extracted = await extractor.extract(url)
-    logger.info(
-        "process_url: extraction done title=%r author=%r text_len=%d",
-        extracted.title,
-        extracted.author,
-        len(extracted.text),
-    )
+    try:
+        extracted = await extractor.extract(url)
+        logger.info(
+            "process_url: extraction done title=%r author=%r text_len=%d",
+            extracted.title,
+            extracted.author,
+            len(extracted.text),
+        )
+    except Exception as exc:
+        logger.warning(
+            "[FIX] process_url: extraction failed, falling back to URL-only post url=%r error=%s",
+            url,
+            exc,
+        )
+        extracted = None
 
     # --- AI Summarization ---
-    logger.debug("process_url: running summarizer")
-    announcement = await summarize(extracted)
+    if extracted is None:
+        announcement = None
+        matched_tags = []
+    else:
+        logger.debug("process_url: running summarizer")
+        announcement = await summarize(extracted)
 
     if announcement is None:
-        # No AI provider configured or provider error — publish URL only without hashtags
+        # No AI provider or extraction failed — publish URL only without hashtags
         logger.warning(
-            "[FIX] process_url: AI unavailable, composing URL-only post url=%r", url
+            "[FIX] process_url: AI unavailable or extraction failed, composing URL-only post url=%r", url
         )
         matched_tags = []
     else:
@@ -110,16 +126,31 @@ async def process_url(
 
     # --- Save to DB ---
     status = PostStatus.pending if moderate else PostStatus.published
-    post = await create_post(
-        session=session,
-        url=url,
-        content_type=ContentType(content_type.value),
-        created_by=created_by,
-        raw_content=extracted.text,
-        post_text=post_text,
-        status=status,
-    )
-    logger.info("process_url: saved post id=%d status=%s", post.id, status)
+    existing_for_force = await get_post_by_url(session, url) if force else None
+    if existing_for_force is not None:
+        # force=True and URL exists: update in-place to avoid UNIQUE constraint violation
+        logger.info(
+            "[FIX] process_url: force=True, updating existing post id=%d url=%r",
+            existing_for_force.id,
+            url,
+        )
+        existing_for_force.raw_content = extracted.text if extracted is not None else ""
+        existing_for_force.post_text = post_text
+        existing_for_force.status = status
+        existing_for_force.content_type = ContentType(content_type.value)
+        await session.flush()
+        post = existing_for_force
+    else:
+        post = await create_post(
+            session=session,
+            url=url,
+            content_type=ContentType(content_type.value),
+            created_by=created_by,
+            raw_content=extracted.text if extracted is not None else "",
+            post_text=post_text,
+            status=status,
+        )
+    logger.info("[FIX] process_url: saved post id=%d status=%s force=%s", post.id, status, force)
 
     # --- Attach hashtags ---
     if matched_tags:
@@ -151,6 +182,75 @@ async def process_url(
         published=published,
         already_exists=False,
     )
+
+
+async def regenerate_announcement(
+    *,
+    post_id: int,
+    session: AsyncSession,
+) -> tuple[Post, str] | None:
+    """
+    Re-generate the announcement for an existing post using its cached raw_content.
+    Skips extraction/transcription entirely — only re-runs summarizer + hashtag matching.
+    Returns (post, new_post_text) or None if post not found.
+    """
+    logger.info("[FIX] regenerate_announcement: post_id=%d", post_id)
+
+    from src.db.repository import get_post
+
+    post = await get_post(session, post_id)
+    if post is None:
+        logger.warning("[FIX] regenerate_announcement: post not found post_id=%d", post_id)
+        return None
+
+    raw = post.raw_content or ""
+    logger.debug(
+        "[FIX] regenerate_announcement: raw_content_len=%d post_id=%d", len(raw), post_id
+    )
+
+    if raw:
+        from src.extractors.base import ExtractedContent
+        from src.extractors.detector import ContentType as DetectorContentType
+
+        extracted = ExtractedContent(
+            text=raw,
+            title=None,
+            author=None,
+            source_url=post.url,
+            content_type=DetectorContentType(post.content_type.value),
+        )
+        announcement = await summarize(extracted)
+        logger.debug(
+            "[FIX] regenerate_announcement: announcement_len=%d post_id=%d",
+            len(announcement) if announcement else 0,
+            post_id,
+        )
+    else:
+        announcement = None
+        logger.warning(
+            "[FIX] regenerate_announcement: no raw_content, composing URL-only post_id=%d",
+            post_id,
+        )
+
+    if announcement is not None:
+        hashtag_rows = await list_hashtags(session)
+        available_tags = [row.tag for row in hashtag_rows]
+        matched_tags = await match_hashtags(announcement, available_tags)
+        logger.info(
+            "[FIX] regenerate_announcement: matched_tags=%s post_id=%d", matched_tags, post_id
+        )
+    else:
+        matched_tags = []
+
+    post_text = compose_post(
+        announcement=announcement,
+        source_url=post.url,
+        hashtags=matched_tags,
+    )
+
+    post = await update_post_text(session, post_id, post_text)
+    logger.info("[FIX] regenerate_announcement: updated post_text post_id=%d", post_id)
+    return post, post_text
 
 
 async def publish_pending_post(
