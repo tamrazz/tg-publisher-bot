@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     gemini_api_key: str | None = None
     deepseek_api_key: str | None = None
+    groq_api_key: str | None = None
 
     # Database
     database_url: str

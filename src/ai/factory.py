@@ -59,6 +59,15 @@ def get_ai_provider() -> BaseAIProvider | None:
 
         provider = DeepSeekProvider(api_key=settings.deepseek_api_key)
 
+    elif provider_name == "groq":
+        if not settings.groq_api_key:
+            logger.error("[FIX] get_ai_provider: GROQ_API_KEY required for groq provider")
+            return None
+        from src.ai.providers.groq import GroqProvider
+
+        logger.info("[FIX] get_ai_provider: using Groq model=llama-3.3-70b-versatile")
+        provider = GroqProvider(api_key=settings.groq_api_key)
+
     else:
         logger.error("[FIX] get_ai_provider: unknown provider=%r — AI disabled", provider_name)
         return None
