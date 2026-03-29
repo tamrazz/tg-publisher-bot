@@ -213,6 +213,15 @@ async def test_audio_extractor_large_file_passes(monkeypatch, tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
+class FakeSnippet:
+    """Mimics youtube-transcript-api v1.x FetchedTranscriptSnippet (not subscriptable)."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.start = 0.0
+        self.duration = 1.0
+
+
 def _make_transcript_entry(text: str) -> dict:
     return {"text": text, "start": 0.0, "duration": 1.0}
 
@@ -235,6 +244,34 @@ def _make_fake_transcript_list(transcripts):
             return iter(transcripts)
 
     return FakeTranscriptList()
+
+
+@pytest.mark.asyncio
+async def test_transcript_via_api_uses_attribute_not_subscript(monkeypatch) -> None:
+    """Regression: FetchedTranscriptSnippet uses .text attribute, not ["text"] subscript.
+
+    youtube-transcript-api v1.x returns snippet objects (not dicts). Using entry["text"]
+    raises TypeError. This test ensures we use entry.text.
+    """
+    import sys
+    import types
+    import unittest.mock as mock
+
+    from src.extractors.youtube import _transcript_via_api
+
+    snippets = [FakeSnippet("Hello"), FakeSnippet("world")]
+
+    class FakeAPI:
+        def fetch(self, video_id, languages=None):
+            return snippets
+
+    fake_module = types.ModuleType("youtube_transcript_api")
+    fake_module.YouTubeTranscriptApi = FakeAPI  # type: ignore[attr-defined]
+
+    with mock.patch.dict(sys.modules, {"youtube_transcript_api": fake_module}):
+        result = await _transcript_via_api("dQw4w9WgXcQ")
+
+    assert result == "Hello world"
 
 
 @pytest.mark.asyncio

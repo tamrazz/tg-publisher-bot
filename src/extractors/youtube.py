@@ -9,7 +9,37 @@ from src.extractors.detector import ContentType
 
 logger = logging.getLogger(__name__)
 
-_MAX_TRANSCRIPT_CHARS = 8000
+# Groq free tier hard limit: 12 000 TPM. Overhead (system prompt + URL) ≈ 1 400 tokens.
+# At ~3.5 chars/token that leaves ~37 000 chars of safe content budget.
+# We use 32 000 to keep a comfortable buffer.
+_MAX_TRANSCRIPT_CHARS = 32_000
+
+
+def _smart_truncate(text: str, max_chars: int) -> str:
+    """
+    Fit *text* into *max_chars* by sampling uniformly:
+    40% from the beginning, 20% from the middle, 40% from the end.
+    Short texts (≤ max_chars) are returned unchanged.
+    """
+    if len(text) <= max_chars:
+        return text
+
+    head = int(max_chars * 0.4)
+    tail = int(max_chars * 0.4)
+    mid_size = max_chars - head - tail
+    mid_start = (len(text) - mid_size) // 2
+
+    logger.debug(
+        "[FIX] _smart_truncate: full_len=%d max=%d head=%d mid=%d tail=%d",
+        len(text), max_chars, head, mid_size, tail,
+    )
+    return (
+        text[:head]
+        + "\n\n[...]\n\n"
+        + text[mid_start : mid_start + mid_size]
+        + "\n\n[...]\n\n"
+        + text[-tail:]
+    )
 
 
 def _extract_video_id(url: str) -> str | None:
@@ -34,17 +64,24 @@ async def _transcript_via_api(video_id: str) -> str | None:
         from youtube_transcript_api import YouTubeTranscriptApi
 
         def _fetch() -> list[dict] | None:
-            # 1. Try preferred languages (works in all library versions)
-            try:
-                entries = YouTubeTranscriptApi.get_transcript(video_id, languages=["ru", "en"])
-                logger.info("[FIX] _transcript_via_api: got preferred-lang transcript video_id=%r", video_id)
-                return entries
-            except Exception as exc_preferred:
-                logger.debug("[FIX] _transcript_via_api: preferred languages failed: %s", exc_preferred)
+            # youtube-transcript-api >= 1.x uses instance methods, not class methods
+            api = YouTubeTranscriptApi()
 
-            # 2. Try list_transcripts (available in youtube-transcript-api >= 0.4.0)
+            # 1. Try preferred languages
             try:
-                transcript_list_obj = YouTubeTranscriptApi.list_transcripts(video_id)
+                entries = api.fetch(video_id, languages=["ru", "en"])
+                logger.info("[FIX] _transcript_via_api: got preferred-lang transcript video_id=%r", video_id)
+                return list(entries)
+            except Exception as exc_preferred:
+                logger.warning(
+                    "[FIX] _transcript_via_api: preferred-lang fetch failed video_id=%r: %s",
+                    video_id,
+                    exc_preferred,
+                )
+
+            # 2. Try any available transcript via list()
+            try:
+                transcript_list_obj = api.list(video_id)
                 available = list(transcript_list_obj)
                 logger.debug(
                     "[FIX] _transcript_via_api: available transcripts=%s",
@@ -57,9 +94,14 @@ async def _transcript_via_api(video_id: str) -> str | None:
                         t.language_code,
                         t.is_generated,
                     )
-                    return t.fetch()
+                    return list(t.fetch())
+                logger.warning("[FIX] _transcript_via_api: list() returned no transcripts video_id=%r", video_id)
             except Exception as exc_list:
-                logger.debug("[FIX] _transcript_via_api: list_transcripts failed: %s", exc_list)
+                logger.warning(
+                    "[FIX] _transcript_via_api: list() failed video_id=%r: %s",
+                    video_id,
+                    exc_list,
+                )
 
             return None
 
@@ -67,9 +109,10 @@ async def _transcript_via_api(video_id: str) -> str | None:
         if not entries:
             logger.warning("[FIX] _transcript_via_api: no transcripts found video_id=%r", video_id)
             return None
-        text = " ".join(entry["text"] for entry in entries)
+        logger.debug("[FIX] _transcript_via_api: snippet type=%s", type(entries[0]).__name__ if entries else "N/A")
+        text = " ".join(entry.text for entry in entries)
         logger.info("[FIX] _transcript_via_api: success video_id=%r text_len=%d", video_id, len(text))
-        return text[:_MAX_TRANSCRIPT_CHARS]
+        return text
     except Exception as exc:
         logger.warning("[FIX] _transcript_via_api: failed video_id=%r: %s", video_id, exc)
         return None
@@ -133,7 +176,7 @@ async def _transcript_via_whisper(url: str) -> str | None:
             url,
             len(transcript),
         )
-        return transcript[:_MAX_TRANSCRIPT_CHARS]
+        return transcript
     except Exception as exc:
         logger.error(
             "[FIX] _transcript_via_whisper: failed url=%r: %s", url, exc, exc_info=True
@@ -165,11 +208,24 @@ class YouTubeExtractor(BaseExtractor):
 
         # Fallback to yt-dlp + faster-whisper
         if text is None:
-            logger.info("YouTubeExtractor.extract: falling back to faster-whisper for url=%r", url)
+            logger.warning(
+                "[FIX] YouTubeExtractor.extract: transcript API returned nothing, "
+                "falling back to yt-dlp + Whisper url=%r",
+                url,
+            )
             text = await _transcript_via_whisper(url)
 
         if text is None:
             raise RuntimeError(f"Could not extract transcript for YouTube video: {url!r}")
+
+        original_len = len(text)
+        text = _smart_truncate(text, _MAX_TRANSCRIPT_CHARS)
+        if len(text) < original_len:
+            logger.info(
+                "[FIX] YouTubeExtractor.extract: transcript truncated (smart) "
+                "original_len=%d final_len=%d url=%r",
+                original_len, len(text), url,
+            )
 
         logger.info("YouTubeExtractor.extract: done url=%r text_len=%d", url, len(text))
         return ExtractedContent(
