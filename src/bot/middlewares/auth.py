@@ -7,7 +7,7 @@ from aiogram.types import TelegramObject, Update
 
 from src.config import settings
 from src.db.models import UserRole
-from src.db.repository import get_or_create_user
+from src.db.repository import get_or_create_user, get_user
 from src.db.session import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
@@ -17,8 +17,8 @@ class AuthMiddleware(BaseMiddleware):
     """
     OuterMiddleware that:
     1. Extracts the Telegram user from the incoming update.
-    2. Gets or creates a DB User row (first owner gets owner role, others get admin).
-    3. Silently drops updates from users not in OWNER_IDS and not already in DB.
+    2. Gets or creates owner users from OWNER_IDS.
+    3. For non-owners, allows only users already present in DB.
     4. Injects ``user`` into handler data.
     """
 
@@ -51,23 +51,30 @@ class AuthMiddleware(BaseMiddleware):
         )
 
         async with AsyncSessionLocal() as session:
-            # Determine role for new users
-            role = UserRole.owner if telegram_id in owner_ids else UserRole.admin
-
-            db_user, created = await get_or_create_user(
-                session=session,
-                telegram_id=telegram_id,
-                username=tg_user.username,
-                role=role,
-            )
-            await session.commit()
+            created = False
+            if telegram_id in owner_ids:
+                db_user, created = await get_or_create_user(
+                    session=session,
+                    telegram_id=telegram_id,
+                    username=tg_user.username,
+                    role=UserRole.owner,
+                )
+                await session.commit()
+            else:
+                db_user = await get_user(session, telegram_id)
 
             if created:
                 logger.info(
-                    "AuthMiddleware: new user registered telegram_id=%d role=%s",
+                    "AuthMiddleware: new owner registered telegram_id=%d",
                     telegram_id,
-                    role,
                 )
+
+            if db_user is None:
+                logger.warning(
+                    "AuthMiddleware: unknown non-owner telegram_id=%d, dropping update",
+                    telegram_id,
+                )
+                return None
 
             # Block users that are not owners and not already registered as admin/owner
             if db_user.role not in (UserRole.owner, UserRole.admin):

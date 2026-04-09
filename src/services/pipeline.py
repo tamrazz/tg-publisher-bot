@@ -106,7 +106,9 @@ async def process_url(
     if announcement is None:
         # No AI provider or extraction failed — publish URL only without hashtags
         logger.warning(
-            "[FIX] process_url: AI unavailable or extraction failed, composing URL-only post url=%r", url
+            "[FIX] process_url: AI unavailable or extraction failed, "
+            "composing URL-only post url=%r",
+            url,
         )
         matched_tags = []
     else:
@@ -166,10 +168,14 @@ async def process_url(
     # --- Attach hashtags ---
     if matched_tags:
         hashtag_ids = []
+        hashtag_rows = await list_hashtags(session)
+        hashtag_ids_by_tag = {row.tag.lower(): row.id for row in hashtag_rows}
+        seen_ids: set[int] = set()
         for tag in matched_tags:
-            row = await get_hashtag_by_tag(session, tag)
-            if row:
-                hashtag_ids.append(row.id)
+            hashtag_id = hashtag_ids_by_tag.get(tag.lower())
+            if hashtag_id is not None and hashtag_id not in seen_ids:
+                seen_ids.add(hashtag_id)
+                hashtag_ids.append(hashtag_id)
         if hashtag_ids:
             await attach_hashtags_to_post(session, post.id, hashtag_ids)
             logger.debug(
@@ -215,9 +221,7 @@ async def regenerate_announcement(
         return None
 
     raw = post.raw_content or ""
-    logger.debug(
-        "[FIX] regenerate_announcement: raw_content_len=%d post_id=%d", len(raw), post_id
-    )
+    logger.debug("[FIX] regenerate_announcement: raw_content_len=%d post_id=%d", len(raw), post_id)
 
     if raw:
         from src.extractors.base import ExtractedContent
@@ -337,15 +341,13 @@ def _sort_and_limit_hashtags(
         logger.debug("[pipeline] _sort_and_limit_hashtags: no matched tags, returning empty list")
         return []
     required_set = {
-        row.tag
+        row.tag.lower()
         for row in hashtag_rows
         if row.category is not None and row.category.is_required
     }
-    sorted_tags = sorted(matched_tags, key=lambda t: t not in required_set)
+    sorted_tags = sorted(matched_tags, key=lambda t: t.lower() not in required_set)
     final = sorted_tags[:5]
-    logger.debug(
-        "[FIX] [pipeline] _sort_and_limit_hashtags: final=%d tags=%s", len(final), final
-    )
+    logger.debug("[FIX] [pipeline] _sort_and_limit_hashtags: final=%d tags=%s", len(final), final)
     return final
 
 
@@ -397,7 +399,8 @@ async def _fill_with_generated_hashtags(
                     )
                 else:
                     logger.debug(
-                        "[pipeline] _fill_with_generated_hashtags: tag=%r already in DB, skipping save",
+                        "[pipeline] _fill_with_generated_hashtags: tag=%r already in DB, "
+                        "skipping save",
                         tag,
                     )
         except Exception as exc:
