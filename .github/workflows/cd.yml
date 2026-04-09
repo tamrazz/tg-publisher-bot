@@ -98,7 +98,7 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             echo "Pulling latest image..."
-            docker compose -f docker-compose.production.yml pull
+            docker compose -f docker-compose.production.yml pull bot
 
             echo "Restarting containers..."
             docker compose -f docker-compose.production.yml up -d --remove-orphans
