@@ -25,9 +25,8 @@ async def add_hashtag(
     """
     logger.info("add_hashtag: tag=%r created_by=%d", tag, created_by)
 
-    # Normalize tag: ensure it starts with #
-    if not tag.startswith("#"):
-        tag = f"#{tag}"
+    # Normalize tag: strip # — tags are stored without # in the DB
+    tag = tag.lstrip("#").strip()
 
     existing = await get_hashtag_by_tag(session, tag)
     if existing is not None:
@@ -41,8 +40,7 @@ async def add_hashtag(
 async def remove_hashtag(session: AsyncSession, tag: str) -> bool:
     """Delete a hashtag by tag string. Returns True if deleted."""
     logger.info("remove_hashtag: tag=%r", tag)
-    if not tag.startswith("#"):
-        tag = f"#{tag}"
+    tag = tag.lstrip("#").strip()
     return await delete_hashtag(session, tag)
 
 

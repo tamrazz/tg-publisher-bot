@@ -122,43 +122,56 @@ async def test_summarize_returns_none_on_provider_error() -> None:
 
 
 def test_parse_hashtags_basic() -> None:
-    # _parse_hashtags is now a method on BaseAIProvider — test via a concrete provider
+    # _parse_hashtags returns tags WITHOUT # (DB storage format)
     from src.ai.providers.claude import ClaudeProvider
 
     provider = ClaudeProvider.__new__(ClaudeProvider)
-    available = ["#tools", "#ai", "#python", "#web"]
+    available = [
+        _make_hashtag_mock("tools"),
+        _make_hashtag_mock("ai"),
+        _make_hashtag_mock("python"),
+        _make_hashtag_mock("web"),
+    ]
     result = provider._parse_hashtags("#tools #ai", available)
-    assert result == ["#tools", "#ai"]
+    assert result == ["tools", "ai"]
 
 
 def test_parse_hashtags_filters_unavailable() -> None:
     from src.ai.providers.claude import ClaudeProvider
 
     provider = ClaudeProvider.__new__(ClaudeProvider)
-    result = provider._parse_hashtags("#tools #nonexistent #python", ["#tools", "#ai"])
-    assert result == ["#tools"]
+    available = [_make_hashtag_mock("tools"), _make_hashtag_mock("ai")]
+    result = provider._parse_hashtags("#tools #nonexistent #python", available)
+    assert result == ["tools"]
 
 
-def test_parse_hashtags_max_three() -> None:
+def _make_hashtag_mock(tag: str) -> MagicMock:
+    h = MagicMock()
+    h.tag = tag
+    return h
+
+
+def test_parse_hashtags_max_five() -> None:
     from src.ai.providers.claude import ClaudeProvider
 
     provider = ClaudeProvider.__new__(ClaudeProvider)
-    result = provider._parse_hashtags("#a #b #c #d", ["#a", "#b", "#c", "#d"])
-    assert len(result) <= 3
+    available = [_make_hashtag_mock(c) for c in ["a", "b", "c", "d", "e", "f"]]
+    result = provider._parse_hashtags("#a #b #c #d #e #f", available)
+    assert len(result) <= 5
 
 
 def test_parse_hashtags_empty_response() -> None:
     from src.ai.providers.claude import ClaudeProvider
 
     provider = ClaudeProvider.__new__(ClaudeProvider)
-    assert provider._parse_hashtags("", ["#tools"]) == []
+    assert provider._parse_hashtags("", [_make_hashtag_mock("tools")]) == []
 
 
 def test_parse_hashtags_case_insensitive() -> None:
     from src.ai.providers.claude import ClaudeProvider
 
     provider = ClaudeProvider.__new__(ClaudeProvider)
-    available = ["#Tools", "#AI"]
+    available = [_make_hashtag_mock("Tools"), _make_hashtag_mock("AI")]
     result = provider._parse_hashtags("#tools #ai", available)
     assert len(result) >= 1
 
@@ -172,18 +185,24 @@ async def test_match_hashtags_empty_available() -> None:
 @pytest.mark.asyncio
 async def test_match_hashtags_returns_empty_when_no_provider() -> None:
     """match_hashtags() returns [] when AI_PROVIDER is not configured."""
+    hashtags = [_make_hashtag_mock("#tools"), _make_hashtag_mock("#ai")]
     with patch("src.ai.hashtag_matcher.get_ai_provider", return_value=None):
-        result = await match_hashtags("Article about AI tools", ["#tools", "#ai"])
+        result = await match_hashtags("Article about AI tools", hashtags)
 
     assert result == []
 
 
 @pytest.mark.asyncio
 async def test_match_hashtags_calls_provider() -> None:
+    hashtags = [
+        _make_hashtag_mock("#tools"),
+        _make_hashtag_mock("#ai"),
+        _make_hashtag_mock("#news"),
+    ]
     mock_provider = make_mock_provider()
     mock_provider.match_hashtags = AsyncMock(return_value=["#tools", "#ai"])
     with patch("src.ai.hashtag_matcher.get_ai_provider", return_value=mock_provider):
-        result = await match_hashtags("Article about AI tools", ["#tools", "#ai", "#news"])
+        result = await match_hashtags("Article about AI tools", hashtags)
 
     assert "#tools" in result
     assert "#ai" in result
@@ -192,9 +211,10 @@ async def test_match_hashtags_calls_provider() -> None:
 
 @pytest.mark.asyncio
 async def test_match_hashtags_returns_empty_on_provider_error() -> None:
+    hashtags = [_make_hashtag_mock("#tools")]
     mock_provider = MagicMock(spec=BaseAIProvider)
     mock_provider.match_hashtags = AsyncMock(side_effect=Exception("API error"))
     with patch("src.ai.hashtag_matcher.get_ai_provider", return_value=mock_provider):
-        result = await match_hashtags("some text", ["#tools"])
+        result = await match_hashtags("some text", hashtags)
 
     assert result == []

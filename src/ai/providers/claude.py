@@ -1,9 +1,18 @@
 import logging
+from typing import TYPE_CHECKING
 
 from anthropic import AsyncAnthropic
 
-from src.ai.base import HASHTAG_SYSTEM_PROMPT, SUMMARIZE_SYSTEM_PROMPT, BaseAIProvider
+from src.ai.base import (
+    GENERATE_HASHTAGS_SYSTEM_PROMPT,
+    HASHTAG_SYSTEM_PROMPT,
+    SUMMARIZE_SYSTEM_PROMPT,
+    BaseAIProvider,
+)
 from src.extractors.base import ExtractedContent
+
+if TYPE_CHECKING:
+    from src.db.models import Hashtag
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +42,17 @@ class ClaudeProvider(BaseAIProvider):
         )
         return result
 
-    async def match_hashtags(self, post_text: str, available_hashtags: list[str]) -> list[str]:
+    async def match_hashtags(
+        self, post_text: str, available_hashtags: list["Hashtag"]
+    ) -> list[str]:
         if not available_hashtags:
             return []
-        hashtags_list = "\n".join(available_hashtags)
-        user_message = f"Доступные хэштеги:\n{hashtags_list}\n\nТекст поста:\n{post_text}"
-        logger.debug("[FIX] ClaudeProvider.match_hashtags: model=%s", _MODEL)
+        user_message = self._build_hashtag_user_message(post_text, available_hashtags)
+        logger.debug(
+            "[FIX] ClaudeProvider.match_hashtags: model=%s input_tags=%d",
+            _MODEL,
+            len(available_hashtags),
+        )
         response = await self._client.messages.create(
             model=_MODEL,
             max_tokens=_HASHTAG_MAX_TOKENS,
@@ -47,3 +61,21 @@ class ClaudeProvider(BaseAIProvider):
         )
         raw = response.content[0].text.strip()
         return self._parse_hashtags(raw, available_hashtags)
+
+    async def generate_hashtags(self, post_text: str, count: int) -> list[str]:
+        if count <= 0:
+            return []
+        logger.debug(
+            "[FIX] ClaudeProvider.generate_hashtags: model=%s count=%d", _MODEL, count
+        )
+        user_message = f"Придумай {count} хэштег(а/ов) для следующего поста:\n\n{post_text}"
+        response = await self._client.messages.create(
+            model=_MODEL,
+            max_tokens=_HASHTAG_MAX_TOKENS,
+            system=GENERATE_HASHTAGS_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        raw = response.content[0].text.strip()
+        result = self._parse_generated_hashtags(raw, count)
+        logger.debug("[FIX] ClaudeProvider.generate_hashtags: generated=%s", result)
+        return result

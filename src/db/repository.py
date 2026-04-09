@@ -2,9 +2,11 @@ import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from src.db.models import ContentType, Hashtag, Post, PostHashtag, PostStatus, User, UserRole
+from src.db.models import ContentType, Hashtag, HashtagCategory, Post, PostHashtag, PostStatus, User, UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +156,61 @@ async def update_post_text(session: AsyncSession, post_id: int, post_text: str) 
 
 
 # ---------------------------------------------------------------------------
+# HashtagCategory CRUD
+# ---------------------------------------------------------------------------
+
+
+async def list_categories(session: AsyncSession) -> list[HashtagCategory]:
+    logger.debug("[category] list_categories: fetching all categories")
+    result = await session.execute(select(HashtagCategory).order_by(HashtagCategory.name))
+    categories = list(result.scalars().all())
+    logger.debug("[category] list_categories: count=%d", len(categories))
+    return categories
+
+
+async def create_category(
+    session: AsyncSession, name: str, is_required: bool = False
+) -> HashtagCategory:
+    logger.debug("[category] create_category: name=%r is_required=%s", name, is_required)
+    category = HashtagCategory(name=name, is_required=is_required)
+    session.add(category)
+    await session.flush()
+    logger.info("[category] create_category: created id=%d name=%r", category.id, name)
+    return category
+
+
+async def get_category_by_name(session: AsyncSession, name: str) -> HashtagCategory | None:
+    logger.debug("[category] get_category_by_name: name=%r", name)
+    result = await session.execute(
+        select(HashtagCategory).where(HashtagCategory.name == name)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_category_by_id(session: AsyncSession, category_id: int) -> HashtagCategory | None:
+    logger.debug("[category] get_category_by_id: id=%d", category_id)
+    result = await session.execute(
+        select(HashtagCategory).where(HashtagCategory.id == category_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def delete_category(session: AsyncSession, category_id: int) -> bool:
+    logger.debug("[category] delete_category: id=%d", category_id)
+    category = await get_category_by_id(session, category_id)
+    if category is None:
+        logger.warning("[category] delete_category: not found id=%d", category_id)
+        return False
+    if category.name == "Свободная":
+        logger.warning("[category] delete_category: refusing to delete default category")
+        return False
+    await session.delete(category)
+    await session.flush()
+    logger.info("[category] delete_category: deleted id=%d name=%r", category_id, category.name)
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Hashtag CRUD
 # ---------------------------------------------------------------------------
 
@@ -163,13 +220,24 @@ async def create_hashtag(
     tag: str,
     created_by: int,
     description: str | None = None,
+    category_id: int | None = None,
 ) -> Hashtag:
-    logger.debug("create_hashtag: tag=%r created_by=%d", tag, created_by)
-    hashtag = Hashtag(tag=tag, description=description, created_by=created_by)
+    logger.debug(
+        "create_hashtag: tag=%r created_by=%d category_id=%s", tag, created_by, category_id
+    )
+    hashtag = Hashtag(
+        tag=tag, description=description, created_by=created_by, category_id=category_id
+    )
     session.add(hashtag)
     await session.flush()
     logger.info("create_hashtag: created hashtag id=%d tag=%r", hashtag.id, tag)
     return hashtag
+
+
+async def get_hashtag_by_id(session: AsyncSession, hashtag_id: int) -> Hashtag | None:
+    logger.debug("get_hashtag_by_id: id=%d", hashtag_id)
+    result = await session.execute(select(Hashtag).where(Hashtag.id == hashtag_id))
+    return result.scalar_one_or_none()
 
 
 async def get_hashtag_by_tag(session: AsyncSession, tag: str) -> Hashtag | None:
@@ -179,11 +247,28 @@ async def get_hashtag_by_tag(session: AsyncSession, tag: str) -> Hashtag | None:
 
 
 async def list_hashtags(session: AsyncSession) -> list[Hashtag]:
-    logger.debug("list_hashtags: fetching all hashtags")
-    result = await session.execute(select(Hashtag).order_by(Hashtag.tag))
+    logger.debug("list_hashtags: fetching all hashtags with categories")
+    result = await session.execute(
+        select(Hashtag).options(selectinload(Hashtag.category)).order_by(Hashtag.tag)
+    )
     hashtags = list(result.scalars().all())
     logger.debug("list_hashtags: found %d hashtags", len(hashtags))
     return hashtags
+
+
+async def update_hashtag(
+    session: AsyncSession, hashtag_id: int, **fields: object
+) -> Hashtag | None:
+    logger.debug("update_hashtag: id=%d fields=%s", hashtag_id, list(fields.keys()))
+    hashtag = await get_hashtag_by_id(session, hashtag_id)
+    if hashtag is None:
+        logger.warning("update_hashtag: hashtag not found id=%d", hashtag_id)
+        return None
+    for key, value in fields.items():
+        setattr(hashtag, key, value)
+    await session.flush()
+    logger.info("update_hashtag: updated id=%d fields=%s", hashtag_id, list(fields.keys()))
+    return hashtag
 
 
 async def delete_hashtag(session: AsyncSession, tag: str) -> bool:
@@ -198,6 +283,18 @@ async def delete_hashtag(session: AsyncSession, tag: str) -> bool:
     return True
 
 
+async def delete_hashtag_by_id(session: AsyncSession, hashtag_id: int) -> bool:
+    logger.debug("delete_hashtag_by_id: id=%d", hashtag_id)
+    hashtag = await get_hashtag_by_id(session, hashtag_id)
+    if hashtag is None:
+        logger.warning("delete_hashtag_by_id: hashtag not found id=%d", hashtag_id)
+        return False
+    await session.delete(hashtag)
+    await session.flush()
+    logger.info("delete_hashtag_by_id: deleted id=%d tag=%r", hashtag_id, hashtag.tag)
+    return True
+
+
 # ---------------------------------------------------------------------------
 # PostHashtag
 # ---------------------------------------------------------------------------
@@ -207,12 +304,17 @@ async def attach_hashtags_to_post(
     session: AsyncSession, post_id: int, hashtag_ids: list[int]
 ) -> None:
     logger.debug("attach_hashtags_to_post: post_id=%d hashtag_ids=%s", post_id, hashtag_ids)
-    for hashtag_id in hashtag_ids:
-        ph = PostHashtag(post_id=post_id, hashtag_id=hashtag_id)
-        session.add(ph)
+    if not hashtag_ids:
+        return
+    stmt = (
+        pg_insert(PostHashtag)
+        .values([{"post_id": post_id, "hashtag_id": hid} for hid in hashtag_ids])
+        .on_conflict_do_nothing(index_elements=["post_id", "hashtag_id"])
+    )
+    await session.execute(stmt)
     await session.flush()
     logger.debug(
-        "attach_hashtags_to_post: attached %d hashtags to post_id=%d",
+        "[FIX] attach_hashtags_to_post: upserted (on conflict do nothing) %d hashtags to post_id=%d",
         len(hashtag_ids),
         post_id,
     )

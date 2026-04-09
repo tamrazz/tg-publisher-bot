@@ -9,8 +9,11 @@ class ModerationStates(StatesGroup):
     editing_announce = State()  # Admin is typing new text (announce flow → shows preview)
 
 
-class HashtagCreationStates(StatesGroup):
-    """FSM states for hashtag creation."""
+class HashtagMgmtStates(StatesGroup):
+    """FSM states for the hashtag management flow (settings → hashtags)."""
 
-    waiting_for_tag = State()
-    waiting_for_description = State()
+    entering_tag = State()
+    selecting_category = State()
+    entering_category_name = State()
+    entering_description = State()
+    confirming = State()

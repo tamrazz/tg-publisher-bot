@@ -4,6 +4,7 @@ from enum import StrEnum
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     Enum,
     ForeignKey,
@@ -56,6 +57,22 @@ class User(Base):
         return f"<User telegram_id={self.telegram_id} role={self.role}>"
 
 
+class HashtagCategory(Base):
+    __tablename__ = "hashtag_categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    is_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    hashtags: Mapped[list["Hashtag"]] = relationship("Hashtag", back_populates="category")
+
+    def __repr__(self) -> str:
+        return f"<HashtagCategory id={self.id} name={self.name!r} is_required={self.is_required}>"
+
+
 class Hashtag(Base):
     __tablename__ = "hashtags"
 
@@ -65,17 +82,23 @@ class Hashtag(Base):
     created_by: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.telegram_id"), nullable=False
     )
+    category_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("hashtag_categories.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     created_by_user: Mapped["User"] = relationship("User", back_populates="hashtags")
+    category: Mapped["HashtagCategory | None"] = relationship(
+        "HashtagCategory", back_populates="hashtags"
+    )
     post_hashtags: Mapped[list["PostHashtag"]] = relationship(
         "PostHashtag", back_populates="hashtag"
     )
 
     def __repr__(self) -> str:
-        return f"<Hashtag id={self.id} tag={self.tag!r}>"
+        return f"<Hashtag id={self.id} tag={self.tag!r} category_id={self.category_id}>"
 
 
 class Post(Base):

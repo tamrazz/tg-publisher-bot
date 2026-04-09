@@ -36,7 +36,8 @@ def compose_post(
 
     if hashtags:
         parts.append("")  # blank line before hashtags
-        parts.append(" ".join(hashtags))
+        # Tags are stored without # in DB — add # for Telegram post format
+        parts.append(" ".join(f"#{t}" if not t.startswith("#") else t for t in hashtags))
 
     result = "\n".join(parts)
     logger.debug("compose_post: result_len=%d", len(result))

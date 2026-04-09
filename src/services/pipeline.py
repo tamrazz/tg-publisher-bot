@@ -5,12 +5,15 @@ from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.composer import compose_post
+from src.ai.hashtag_generator import generate_extra_hashtags
 from src.ai.hashtag_matcher import match_hashtags
 from src.ai.summarizer import summarize
 from src.db.models import ContentType, Post, PostStatus
 from src.db.repository import (
     attach_hashtags_to_post,
+    create_hashtag,
     create_post,
+    get_category_by_name,
     get_hashtag_by_tag,
     get_post_by_url,
     is_url_processed,
@@ -111,10 +114,18 @@ async def process_url(
         # --- Hashtag matching ---
         logger.debug("process_url: fetching available hashtags from DB")
         hashtag_rows = await list_hashtags(session)
-        available_tags = [row.tag for row in hashtag_rows]
-        logger.debug("process_url: available_tags_count=%d", len(available_tags))
-        matched_tags = await match_hashtags(announcement, available_tags)
-        logger.info("process_url: matched_tags=%s", matched_tags)
+        logger.debug("process_url: available_hashtags_count=%d", len(hashtag_rows))
+        matched_tags = await match_hashtags(announcement, hashtag_rows)
+        raw_match_count = len(matched_tags)
+        matched_tags = _sort_and_limit_hashtags(matched_tags, hashtag_rows)
+        logger.info(
+            "[pipeline] process_url: hashtags matched=%d final=%d",
+            raw_match_count,
+            len(matched_tags),
+        )
+        matched_tags = await _fill_with_generated_hashtags(
+            announcement, matched_tags, session=session, created_by=created_by
+        )
 
     # --- Compose final post ---
     post_text = compose_post(
@@ -234,10 +245,13 @@ async def regenerate_announcement(
 
     if announcement is not None:
         hashtag_rows = await list_hashtags(session)
-        available_tags = [row.tag for row in hashtag_rows]
-        matched_tags = await match_hashtags(announcement, available_tags)
+        raw_matches = await match_hashtags(announcement, hashtag_rows)
+        matched_tags = _sort_and_limit_hashtags(raw_matches, hashtag_rows)
         logger.info(
             "[FIX] regenerate_announcement: matched_tags=%s post_id=%d", matched_tags, post_id
+        )
+        matched_tags = await _fill_with_generated_hashtags(
+            announcement, matched_tags, session=session, created_by=post.created_by
         )
     else:
         matched_tags = []
@@ -309,6 +323,97 @@ async def reject_post(*, post_id: int, session: AsyncSession) -> Post | None:
     await update_post_status(session, post_id, PostStatus.rejected)
     logger.info("reject_post: rejected post_id=%d", post_id)
     return post
+
+
+def _sort_and_limit_hashtags(
+    matched_tags: list[str],
+    hashtag_rows: list,
+) -> list[str]:
+    """
+    Sort matched hashtags so required-category tags come first.
+    Cap at 5; return empty list only when there are 0 matches.
+    """
+    if not matched_tags:
+        logger.debug("[pipeline] _sort_and_limit_hashtags: no matched tags, returning empty list")
+        return []
+    required_set = {
+        row.tag
+        for row in hashtag_rows
+        if row.category is not None and row.category.is_required
+    }
+    sorted_tags = sorted(matched_tags, key=lambda t: t not in required_set)
+    final = sorted_tags[:5]
+    logger.debug(
+        "[FIX] [pipeline] _sort_and_limit_hashtags: final=%d tags=%s", len(final), final
+    )
+    return final
+
+
+async def _fill_with_generated_hashtags(
+    announcement: str,
+    matched_tags: list[str],
+    session: AsyncSession,
+    created_by: int,
+    max_total: int = 5,
+    max_generated: int = 2,
+) -> list[str]:
+    """
+    If matched_tags has room (< max_total), ask AI to generate up to *max_generated*
+    additional topical hashtags and save them to the DB in the "Свободная" category.
+    """
+    slots = max_total - len(matched_tags)
+    if slots <= 0:
+        return matched_tags
+    to_generate = min(slots, max_generated)
+    logger.debug(
+        "[pipeline] _fill_with_generated_hashtags: db_tags=%d slots=%d to_generate=%d",
+        len(matched_tags),
+        slots,
+        to_generate,
+    )
+    extra = await generate_extra_hashtags(announcement, to_generate)
+    # Avoid duplicates with already-matched tags
+    existing = {t.lower() for t in matched_tags}
+    deduped = [t for t in extra if t.lower() not in existing]
+    new_tags = deduped[:to_generate]
+
+    # Save generated hashtags to DB in "Свободная" category
+    if new_tags:
+        try:
+            category = await get_category_by_name(session, "Свободная")
+            category_id = category.id if category else None
+            for tag in new_tags:
+                existing_row = await get_hashtag_by_tag(session, tag)
+                if existing_row is None:
+                    await create_hashtag(
+                        session,
+                        tag=tag,
+                        created_by=created_by,
+                        category_id=category_id,
+                    )
+                    logger.info(
+                        "[pipeline] _fill_with_generated_hashtags: saved tag=%r to Свободная",
+                        tag,
+                    )
+                else:
+                    logger.debug(
+                        "[pipeline] _fill_with_generated_hashtags: tag=%r already in DB, skipping save",
+                        tag,
+                    )
+        except Exception as exc:
+            logger.error(
+                "[pipeline] _fill_with_generated_hashtags: failed to save tags to DB error=%s",
+                exc,
+            )
+
+    result = matched_tags + new_tags
+    logger.info(
+        "[pipeline] _fill_with_generated_hashtags: added %d generated tags=%s total=%d",
+        len(new_tags),
+        new_tags,
+        len(result),
+    )
+    return result
 
 
 async def _get_existing_post(session: AsyncSession, url: str) -> Post:
