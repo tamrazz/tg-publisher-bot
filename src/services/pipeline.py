@@ -105,9 +105,7 @@ async def process_url(
 
     if announcement is None:
         # No AI provider or extraction failed — publish URL only without hashtags
-        logger.warning(
-            "[FIX] process_url: AI unavailable or extraction failed, url=%r", url
-        )
+        logger.warning("[FIX] process_url: AI unavailable or extraction failed, url=%r", url)
         matched_tags = []
     else:
         logger.debug("process_url: announcement_len=%d", len(announcement))
@@ -215,9 +213,7 @@ async def regenerate_announcement(
         return None
 
     raw = post.raw_content or ""
-    logger.debug(
-        "[FIX] regenerate_announcement: raw_content_len=%d post_id=%d", len(raw), post_id
-    )
+    logger.debug("[FIX] regenerate_announcement: raw_content_len=%d post_id=%d", len(raw), post_id)
 
     if raw:
         from src.extractors.base import ExtractedContent
@@ -337,15 +333,11 @@ def _sort_and_limit_hashtags(
         logger.debug("[pipeline] _sort_and_limit_hashtags: no matched tags, returning empty list")
         return []
     required_set = {
-        row.tag
-        for row in hashtag_rows
-        if row.category is not None and row.category.is_required
+        row.tag for row in hashtag_rows if row.category is not None and row.category.is_required
     }
     sorted_tags = sorted(matched_tags, key=lambda t: t not in required_set)
     final = sorted_tags[:5]
-    logger.debug(
-        "[FIX] [pipeline] _sort_and_limit_hashtags: final=%d tags=%s", len(final), final
-    )
+    logger.debug("[FIX] [pipeline] _sort_and_limit_hashtags: final=%d tags=%s", len(final), final)
     return final
 
 

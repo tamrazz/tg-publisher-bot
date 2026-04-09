@@ -4,6 +4,7 @@ Legacy hashtag command handlers — replaced by the settings FSM flow.
 The commands /add_hashtag, /list_hashtags, /delete_hashtag have been removed.
 Use /settings → Хештеги instead.
 """
+
 import logging
 
 from aiogram import Router

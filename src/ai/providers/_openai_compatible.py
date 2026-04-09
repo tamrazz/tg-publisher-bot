@@ -89,7 +89,5 @@ class OpenAICompatibleProvider(BaseAIProvider):
         )
         raw = (response.choices[0].message.content or "").strip()
         result = self._parse_generated_hashtags(raw, count)
-        logger.debug(
-            "[FIX] %s.generate_hashtags: generated=%s", self.__class__.__name__, result
-        )
+        logger.debug("[FIX] %s.generate_hashtags: generated=%s", self.__class__.__name__, result)
         return result

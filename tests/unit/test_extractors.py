@@ -295,6 +295,7 @@ async def test_youtube_extractor_uses_preferred_language(monkeypatch) -> None:
 
     with mock.patch.dict("sys.modules", {"youtube_transcript_api": mock.MagicMock()}):
         import youtube_transcript_api  # noqa: F401 — ensure module is patchable
+
         monkeypatch.setattr(
             "src.extractors.youtube._transcript_via_api",
             lambda video_id: _async_result("Привет мир"),

@@ -5,6 +5,7 @@ Tests for hashtag category logic:
 - category is_required determined by '!' prefix
 - _fill_with_generated_hashtags fills remaining slots with AI tags (max 2)
 """
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

@@ -85,9 +85,7 @@ class BaseAIProvider(ABC):
         parts.append(f"\nТекст материала:\n{content.text}")
         return "\n".join(parts)
 
-    def _build_hashtag_user_message(
-        self, post_text: str, hashtags: list["Hashtag"]
-    ) -> str:
+    def _build_hashtag_user_message(self, post_text: str, hashtags: list["Hashtag"]) -> str:
         # Tags are stored without # in the DB; add # for the AI prompt so it sees
         # the canonical Telegram hashtag format (e.g. "#python — описание")
         lines = []

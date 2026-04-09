@@ -31,7 +31,11 @@ def _smart_truncate(text: str, max_chars: int) -> str:
 
     logger.debug(
         "[FIX] _smart_truncate: full_len=%d max=%d head=%d mid=%d tail=%d",
-        len(text), max_chars, head, mid_size, tail,
+        len(text),
+        max_chars,
+        head,
+        mid_size,
+        tail,
     )
     return (
         text[:head]
@@ -93,8 +97,7 @@ async def _transcript_via_api(video_id: str) -> str | None:
                 if available:
                     t = available[0]
                     logger.info(
-                        "[FIX] _transcript_via_api: fallback transcript"
-                        " lang=%r is_generated=%s",
+                        "[FIX] _transcript_via_api: fallback transcript lang=%r is_generated=%s",
                         t.language_code,
                         t.is_generated,
                     )
@@ -123,7 +126,8 @@ async def _transcript_via_api(video_id: str) -> str | None:
         text = " ".join(entry.text for entry in entries)
         logger.info(
             "[FIX] _transcript_via_api: success video_id=%r text_len=%d",
-            video_id, len(text),
+            video_id,
+            len(text),
         )
         return text
     except Exception as exc:
@@ -178,9 +182,7 @@ async def _transcript_via_whisper(url: str) -> str | None:
                 model = _get_whisper_model()
                 segments, info = model.transcribe(mp3_path, beam_size=5)
                 text = " ".join(segment.text.strip() for segment in segments)
-                logger.debug(
-                    "[FIX] _transcript_via_whisper: detected_language=%r", info.language
-                )
+                logger.debug("[FIX] _transcript_via_whisper: detected_language=%r", info.language)
                 return text
 
             transcript = await _run_sync(_run_transcription)
@@ -192,9 +194,7 @@ async def _transcript_via_whisper(url: str) -> str | None:
         )
         return transcript
     except Exception as exc:
-        logger.error(
-            "[FIX] _transcript_via_whisper: failed url=%r: %s", url, exc, exc_info=True
-        )
+        logger.error("[FIX] _transcript_via_whisper: failed url=%r: %s", url, exc, exc_info=True)
         return None
 
 
@@ -238,7 +238,9 @@ class YouTubeExtractor(BaseExtractor):
             logger.info(
                 "[FIX] YouTubeExtractor.extract: transcript truncated (smart) "
                 "original_len=%d final_len=%d url=%r",
-                original_len, len(text), url,
+                original_len,
+                len(text),
+                url,
             )
 
         logger.info("YouTubeExtractor.extract: done url=%r text_len=%d", url, len(text))

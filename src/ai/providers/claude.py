@@ -65,9 +65,7 @@ class ClaudeProvider(BaseAIProvider):
     async def generate_hashtags(self, post_text: str, count: int) -> list[str]:
         if count <= 0:
             return []
-        logger.debug(
-            "[FIX] ClaudeProvider.generate_hashtags: model=%s count=%d", _MODEL, count
-        )
+        logger.debug("[FIX] ClaudeProvider.generate_hashtags: model=%s count=%d", _MODEL, count)
         user_message = f"Придумай {count} хэштег(а/ов) для следующего поста:\n\n{post_text}"
         response = await self._client.messages.create(
             model=_MODEL,

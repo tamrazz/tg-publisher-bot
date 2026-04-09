@@ -114,9 +114,7 @@ def hashtag_list_keyboard(hashtags: list["Hashtag"]) -> InlineKeyboardMarkup:
     [#tag] for each hashtag
     """
     logger.debug("hashtag_list_keyboard: count=%d", len(hashtags))
-    rows = [
-        [InlineKeyboardButton(text="➕ Добавить новый", callback_data="ht:new")]
-    ]
+    rows = [[InlineKeyboardButton(text="➕ Добавить новый", callback_data="ht:new")]]
     for h in hashtags:
         rows.append([InlineKeyboardButton(text=f"#{h.tag}", callback_data=f"ht:view:{h.id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -132,18 +130,10 @@ def hashtag_action_keyboard(hashtag_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text="✏️ Изменить", callback_data=f"ht:edit:{hashtag_id}"
-                ),
-                InlineKeyboardButton(
-                    text="🗑 Удалить", callback_data=f"ht:delete:{hashtag_id}"
-                ),
+                InlineKeyboardButton(text="✏️ Изменить", callback_data=f"ht:edit:{hashtag_id}"),
+                InlineKeyboardButton(text="🗑 Удалить", callback_data=f"ht:delete:{hashtag_id}"),
             ],
-            [
-                InlineKeyboardButton(
-                    text="⬅️ Назад", callback_data="settings:hashtags"
-                )
-            ],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="settings:hashtags")],
         ]
     )
 
@@ -156,19 +146,13 @@ def category_select_keyboard(
     [➕ Добавить новую]
     [⚠️ name] for required categories, [name] for others
     """
-    logger.debug(
-        "category_select_keyboard: count=%d selected_id=%s", len(categories), selected_id
-    )
-    rows = [
-        [InlineKeyboardButton(text="➕ Добавить новую", callback_data="cat:new")]
-    ]
+    logger.debug("category_select_keyboard: count=%d selected_id=%s", len(categories), selected_id)
+    rows = [[InlineKeyboardButton(text="➕ Добавить новую", callback_data="cat:new")]]
     for cat in categories:
         label = f"⚠️ {cat.name}" if cat.is_required else cat.name
         if cat.id == selected_id:
             label = f"✅ {label}"
-        rows.append(
-            [InlineKeyboardButton(text=label, callback_data=f"cat:pick:{cat.id}")]
-        )
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"cat:pick:{cat.id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

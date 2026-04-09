@@ -189,17 +189,13 @@ async def create_category(
 
 async def get_category_by_name(session: AsyncSession, name: str) -> HashtagCategory | None:
     logger.debug("[category] get_category_by_name: name=%r", name)
-    result = await session.execute(
-        select(HashtagCategory).where(HashtagCategory.name == name)
-    )
+    result = await session.execute(select(HashtagCategory).where(HashtagCategory.name == name))
     return result.scalar_one_or_none()
 
 
 async def get_category_by_id(session: AsyncSession, category_id: int) -> HashtagCategory | None:
     logger.debug("[category] get_category_by_id: id=%d", category_id)
-    result = await session.execute(
-        select(HashtagCategory).where(HashtagCategory.id == category_id)
-    )
+    result = await session.execute(select(HashtagCategory).where(HashtagCategory.id == category_id))
     return result.scalar_one_or_none()
 
 

@@ -276,7 +276,9 @@ async def handle_dup_republish(
     except Exception as exc:
         logger.error(
             "[FIX] handle_dup_republish: error post_id=%d: %s",
-            post_id, exc, exc_info=True,
+            post_id,
+            exc,
+            exc_info=True,
         )
         await query.message.edit_text(  # type: ignore[union-attr]
             f"❌ Ошибка публикации: <code>{html.escape(str(exc))}</code>", parse_mode="HTML"
@@ -333,7 +335,9 @@ async def handle_dup_reprocess(
     except Exception as exc:
         logger.error(
             "[FIX] handle_dup_reprocess: error post_id=%d: %s",
-            post_id, exc, exc_info=True,
+            post_id,
+            exc,
+            exc_info=True,
         )
         await query.message.edit_text(  # type: ignore[union-attr]
             f"❌ Ошибка обработки: <code>{html.escape(str(exc))}</code>", parse_mode="HTML"
