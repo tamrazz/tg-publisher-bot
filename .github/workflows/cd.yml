@@ -101,7 +101,9 @@ jobs:
             docker compose -f docker-compose.production.yml pull bot
 
             echo "Restarting containers..."
-            docker compose -f docker-compose.production.yml up -d --remove-orphans --force-recreate
+            docker compose -f docker-compose.production.yml up -d postgres
+            docker compose -f docker-compose.production.yml rm -f -s bot || true
+            docker compose -f docker-compose.production.yml up -d --remove-orphans bot
 
             echo "Removing old images..."
             docker image prune -f
