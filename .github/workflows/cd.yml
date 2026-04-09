@@ -6,6 +6,10 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+concurrency:
+  group: production
+  cancel-in-progress: true
+
 jobs:
   build-and-push:
     name: Build & Push Docker image
