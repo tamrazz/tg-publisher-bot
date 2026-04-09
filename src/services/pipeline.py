@@ -106,7 +106,7 @@ async def process_url(
     if announcement is None:
         # No AI provider or extraction failed — publish URL only without hashtags
         logger.warning(
-            "[FIX] process_url: AI unavailable or extraction failed, composing URL-only post url=%r", url
+            "[FIX] process_url: AI unavailable or extraction failed, url=%r", url
         )
         matched_tags = []
     else:
@@ -397,7 +397,7 @@ async def _fill_with_generated_hashtags(
                     )
                 else:
                     logger.debug(
-                        "[pipeline] _fill_with_generated_hashtags: tag=%r already in DB, skipping save",
+                        "[pipeline] _fill_with_generated_hashtags: tag=%r already in DB, skip",
                         tag,
                     )
         except Exception as exc:

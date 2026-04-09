@@ -6,7 +6,16 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.db.models import ContentType, Hashtag, HashtagCategory, Post, PostHashtag, PostStatus, User, UserRole
+from src.db.models import (
+    ContentType,
+    Hashtag,
+    HashtagCategory,
+    Post,
+    PostHashtag,
+    PostStatus,
+    User,
+    UserRole,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -314,7 +323,7 @@ async def attach_hashtags_to_post(
     await session.execute(stmt)
     await session.flush()
     logger.debug(
-        "[FIX] attach_hashtags_to_post: upserted (on conflict do nothing) %d hashtags to post_id=%d",
+        "[FIX] attach_hashtags_to_post: upserted %d hashtags (on conflict do nothing) post_id=%d",
         len(hashtag_ids),
         post_id,
     )
