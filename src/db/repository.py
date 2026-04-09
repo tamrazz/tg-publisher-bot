@@ -2,7 +2,6 @@ import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -315,15 +314,12 @@ async def attach_hashtags_to_post(
     logger.debug("attach_hashtags_to_post: post_id=%d hashtag_ids=%s", post_id, hashtag_ids)
     if not hashtag_ids:
         return
-    stmt = (
-        pg_insert(PostHashtag)
-        .values([{"post_id": post_id, "hashtag_id": hid} for hid in hashtag_ids])
-        .on_conflict_do_nothing(index_elements=["post_id", "hashtag_id"])
-    )
-    await session.execute(stmt)
+    for hashtag_id in hashtag_ids:
+        ph = PostHashtag(post_id=post_id, hashtag_id=hashtag_id)
+        session.add(ph)
     await session.flush()
     logger.debug(
-        "[FIX] attach_hashtags_to_post: upserted %d hashtags (on conflict do nothing) post_id=%d",
+        "attach_hashtags_to_post: attached %d hashtags to post_id=%d",
         len(hashtag_ids),
         post_id,
     )
