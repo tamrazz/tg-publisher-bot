@@ -81,17 +81,22 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           OWNER_IDS: ${{ secrets.OWNER_IDS }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: BOT_TOKEN,TELEGRAM_CHANNEL_ID,ANTHROPIC_API_KEY,OPENAI_API_KEY,GEMINI_API_KEY,DEEPSEEK_API_KEY,GROQ_API_KEY,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,OWNER_IDS,GITHUB_TOKEN
+          envs: BOT_TOKEN,TELEGRAM_CHANNEL_ID,ANTHROPIC_API_KEY,OPENAI_API_KEY,GEMINI_API_KEY,DEEPSEEK_API_KEY,GROQ_API_KEY,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,OWNER_IDS,GITHUB_TOKEN,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN
           script: |
             set -e
             cd /srv/projects/tg-publisher-bot/app
 
             echo "Generating .env from template..."
             envsubst < .env.example > .env
+
+            echo "Logging in to Docker Hub..."
+            echo "${DOCKERHUB_TOKEN}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
 
             echo "Logging in to GitHub Container Registry..."
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
