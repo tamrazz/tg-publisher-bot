@@ -52,14 +52,58 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
+      - uses: actions/checkout@v4
+
+      - name: Copy config files to server
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "docker-compose.production.yml,.env.example"
+          target: /srv/projects/tg-publisher-bot/app/
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          OWNER_IDS: ${{ secrets.OWNER_IDS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: BOT_TOKEN,TELEGRAM_CHANNEL_ID,ANTHROPIC_API_KEY,OPENAI_API_KEY,GEMINI_API_KEY,DEEPSEEK_API_KEY,GROQ_API_KEY,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,OWNER_IDS,GITHUB_TOKEN
           script: |
-            cd /opt/tg-publisher-bot
+            set -e
+            cd /srv/projects/tg-publisher-bot/app
+
+            echo "Generating .env from template..."
+            envsubst < .env.example > .env
+
+            echo "Logging in to GitHub Container Registry..."
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            echo "Pulling latest image..."
             docker compose -f docker-compose.production.yml pull
+
+            echo "Restarting containers..."
             docker compose -f docker-compose.production.yml up -d --remove-orphans
+
+            echo "Removing old images..."
             docker image prune -f
+
+            echo "=== Container status ==="
+            docker compose -f docker-compose.production.yml ps
+
+            echo "=== Recent logs ==="
+            docker compose -f docker-compose.production.yml logs --tail=50
