@@ -5,6 +5,7 @@ Tests for hashtag category logic:
 - category is_required determined by '!' prefix
 - _fill_with_generated_hashtags fills remaining slots with AI tags (max 2)
 """
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -119,13 +120,24 @@ def test_no_category_hashtags_not_treated_as_required() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _mock_session() -> AsyncMock:
+    return AsyncMock()
+
+
 @pytest.mark.asyncio
 async def test_fill_adds_generated_when_slots_remain() -> None:
-    with patch(
-        "src.services.pipeline.generate_extra_hashtags",
-        new=AsyncMock(return_value=["aiml", "opensource"]),
+    with (
+        patch(
+            "src.services.pipeline.generate_extra_hashtags",
+            new=AsyncMock(return_value=["aiml", "opensource"]),
+        ),
+        patch("src.services.pipeline.get_category_by_name", new=AsyncMock(return_value=None)),
+        patch("src.services.pipeline.get_hashtag_by_tag", new=AsyncMock(return_value=None)),
+        patch("src.services.pipeline.create_hashtag", new=AsyncMock()),
     ):
-        result = await _fill_with_generated_hashtags("some post text", ["python", "tools"])
+        result = await _fill_with_generated_hashtags(
+            "some post text", ["python", "tools"], session=_mock_session(), created_by=1
+        )
 
     assert "python" in result
     assert "tools" in result
@@ -140,7 +152,9 @@ async def test_fill_no_extra_when_already_5() -> None:
         "src.services.pipeline.generate_extra_hashtags",
         new=AsyncMock(return_value=["extra"]),
     ) as mock_gen:
-        result = await _fill_with_generated_hashtags("text", tags)
+        result = await _fill_with_generated_hashtags(
+            "text", tags, session=_mock_session(), created_by=1
+        )
 
     mock_gen.assert_not_called()
     assert result == tags
@@ -148,11 +162,18 @@ async def test_fill_no_extra_when_already_5() -> None:
 
 @pytest.mark.asyncio
 async def test_fill_deduplicates_generated_tags() -> None:
-    with patch(
-        "src.services.pipeline.generate_extra_hashtags",
-        new=AsyncMock(return_value=["python", "newone"]),  # "python" already matched
+    with (
+        patch(
+            "src.services.pipeline.generate_extra_hashtags",
+            new=AsyncMock(return_value=["python", "newone"]),  # "python" already matched
+        ),
+        patch("src.services.pipeline.get_category_by_name", new=AsyncMock(return_value=None)),
+        patch("src.services.pipeline.get_hashtag_by_tag", new=AsyncMock(return_value=None)),
+        patch("src.services.pipeline.create_hashtag", new=AsyncMock()),
     ):
-        result = await _fill_with_generated_hashtags("text", ["python"])
+        result = await _fill_with_generated_hashtags(
+            "text", ["python"], session=_mock_session(), created_by=1
+        )
 
     assert result.count("python") == 1
     assert "newone" in result
@@ -160,11 +181,16 @@ async def test_fill_deduplicates_generated_tags() -> None:
 
 @pytest.mark.asyncio
 async def test_fill_generates_at_most_2_extra() -> None:
-    with patch(
-        "src.services.pipeline.generate_extra_hashtags",
-        new=AsyncMock(return_value=["x", "y"]),
-    ) as mock_gen:
-        await _fill_with_generated_hashtags("text", [])
+    with (
+        patch(
+            "src.services.pipeline.generate_extra_hashtags",
+            new=AsyncMock(return_value=["x", "y"]),
+        ) as mock_gen,
+        patch("src.services.pipeline.get_category_by_name", new=AsyncMock(return_value=None)),
+        patch("src.services.pipeline.get_hashtag_by_tag", new=AsyncMock(return_value=None)),
+        patch("src.services.pipeline.create_hashtag", new=AsyncMock()),
+    ):
+        await _fill_with_generated_hashtags("text", [], session=_mock_session(), created_by=1)
 
     # count passed to generate_extra_hashtags should be <= 2
     call_count_arg = mock_gen.call_args[0][1]

@@ -8,7 +8,6 @@ from src.ai.summarizer import summarize
 from src.extractors.base import ExtractedContent
 from src.extractors.detector import ContentType
 
-
 # ---------------------------------------------------------------------------
 # SUMMARIZE_SYSTEM_PROMPT contract tests
 # ---------------------------------------------------------------------------

@@ -13,10 +13,15 @@ from src.bot.keyboards import (
 )
 from src.bot.states import ModerationStates
 from src.db.models import User, UserRole
-from src.db.session import AsyncSessionLocal
 from src.db.repository import get_post
+from src.db.session import AsyncSessionLocal
 from src.publisher.channel import publish_to_channel
-from src.services.pipeline import process_url, publish_pending_post, regenerate_announcement, reject_post
+from src.services.pipeline import (
+    process_url,
+    publish_pending_post,
+    regenerate_announcement,
+    reject_post,
+)
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -119,7 +124,9 @@ async def handle_publish_now(
             await session.commit()
 
         if post is None:
-            await query.message.edit_text("❌ Пост не найден или уже обработан.")  # type: ignore[union-attr]
+            await query.message.edit_text(  # type: ignore[union-attr]
+                "❌ Пост не найден или уже обработан."
+            )
             return
 
         logger.info("handle_publish_now: published post_id=%d", post_id)
@@ -148,7 +155,9 @@ async def handle_send_to_moderation(
     logger.info("handle_send_to_moderation: post_id=%d telegram_id=%d", post_id, telegram_id)
 
     await query.answer()
-    await query.message.edit_reply_markup(reply_markup=moderation_keyboard(post_id))  # type: ignore[union-attr]
+    await query.message.edit_reply_markup(  # type: ignore[union-attr]
+        reply_markup=moderation_keyboard(post_id)
+    )
 
 
 @router.callback_query(F.data.startswith("approve:"))
@@ -171,7 +180,9 @@ async def handle_approve(query: CallbackQuery, state: FSMContext, user: User | N
             await session.commit()
 
         if post is None:
-            await query.message.edit_text("❌ Пост не найден или уже обработан.")  # type: ignore[union-attr]
+            await query.message.edit_text(  # type: ignore[union-attr]
+                "❌ Пост не найден или уже обработан."
+            )
             return
 
         logger.info("handle_approve: published post_id=%d", post_id)
@@ -179,7 +190,9 @@ async def handle_approve(query: CallbackQuery, state: FSMContext, user: User | N
 
     except Exception as exc:
         logger.error("handle_approve: error post_id=%d: %s", post_id, exc, exc_info=True)
-        await query.message.edit_text(f"❌ Ошибка: <code>{exc}</code>", parse_mode="HTML")  # type: ignore[union-attr]
+        await query.message.edit_text(  # type: ignore[union-attr]
+            f"❌ Ошибка: <code>{exc}</code>", parse_mode="HTML"
+        )
 
 
 @router.callback_query(F.data.startswith("reject:"))
@@ -248,16 +261,25 @@ async def handle_dup_republish(
         async with AsyncSessionLocal() as session:
             post = await get_post(session, post_id)
             if post is None or not post.post_text:
-                await query.message.edit_text("❌ Пост не найден или текст пуста.")  # type: ignore[union-attr]
+                await query.message.edit_text(  # type: ignore[union-attr]
+                    "❌ Пост не найден или текст пуста."
+                )
                 return
             await publish_to_channel(bot, post.post_text)
             await session.commit()
 
         logger.info("[FIX] handle_dup_republish: published post_id=%d", post_id)
-        await query.message.edit_text(f"✅ Пост #{post_id} опубликован повторно.")  # type: ignore[union-attr]
+        await query.message.edit_text(  # type: ignore[union-attr]
+            f"✅ Пост #{post_id} опубликован повторно."
+        )
 
     except Exception as exc:
-        logger.error("[FIX] handle_dup_republish: error post_id=%d: %s", post_id, exc, exc_info=True)
+        logger.error(
+            "[FIX] handle_dup_republish: error post_id=%d: %s",
+            post_id,
+            exc,
+            exc_info=True,
+        )
         await query.message.edit_text(  # type: ignore[union-attr]
             f"❌ Ошибка публикации: <code>{html.escape(str(exc))}</code>", parse_mode="HTML"
         )
@@ -311,7 +333,12 @@ async def handle_dup_reprocess(
         )
 
     except Exception as exc:
-        logger.error("[FIX] handle_dup_reprocess: error post_id=%d: %s", post_id, exc, exc_info=True)
+        logger.error(
+            "[FIX] handle_dup_reprocess: error post_id=%d: %s",
+            post_id,
+            exc,
+            exc_info=True,
+        )
         await query.message.edit_text(  # type: ignore[union-attr]
             f"❌ Ошибка обработки: <code>{html.escape(str(exc))}</code>", parse_mode="HTML"
         )

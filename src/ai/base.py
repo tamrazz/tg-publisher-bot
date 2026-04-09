@@ -22,7 +22,8 @@ SUMMARIZE_SYSTEM_PROMPT = """\
 - Без хэштегов, без копирайта
 
 Пример хорошего анонса:
-⚠️ Почему вайбкодеры не заменят программистов — как LLM установили заражённый пакет в тысячах проектов.
+⚠️ Почему вайбкодеры не заменят программистов — как LLM установили заражённый \
+пакет в тысячах проектов.
 """
 
 HASHTAG_SYSTEM_PROMPT = """\
@@ -38,7 +39,8 @@ GENERATE_HASHTAGS_SYSTEM_PROMPT = """\
 Ты — ассистент, который придумывает релевантные хэштеги для Telegram-постов.
 Тебе дадут текст поста и количество хэштегов, которые нужно сгенерировать.
 
-Придумай ровно столько хэштегов, сколько указано. Ставь приоритет на конкретные сущности из материала:
+Придумай ровно столько хэштегов, сколько указано. Ставь приоритет на конкретные \
+сущности из материала:
 - Названия инструментов, библиотек, фреймворков: #Python, #Docker, #LangChain, #Whisper
 - Бренды и компании: #OpenAI, #Google, #Apple, #Anthropic
 - Технологии и концепции: #LLM, #RAG, #MachineLearning, #ComputerVision
@@ -83,9 +85,7 @@ class BaseAIProvider(ABC):
         parts.append(f"\nТекст материала:\n{content.text}")
         return "\n".join(parts)
 
-    def _build_hashtag_user_message(
-        self, post_text: str, hashtags: list["Hashtag"]
-    ) -> str:
+    def _build_hashtag_user_message(self, post_text: str, hashtags: list["Hashtag"]) -> str:
         # Tags are stored without # in the DB; add # for the AI prompt so it sees
         # the canonical Telegram hashtag format (e.g. "#python — описание")
         lines = []

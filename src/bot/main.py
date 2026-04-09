@@ -91,8 +91,14 @@ async def _set_bot_commands(bot: Bot) -> None:
     admin_commands = [
         BotCommand(command="settings", description="⚙️ Настройки бота"),
         BotCommand(command="reset", description="🔄 Сбросить текущее состояние"),
-        BotCommand(command="add_admin", description="👤 Добавить администратора (только для владельца)"),
-        BotCommand(command="remove_admin", description="🗑 Удалить администратора (только для владельца)"),
+        BotCommand(
+            command="add_admin",
+            description="👤 Добавить администратора (только для владельца)",
+        ),
+        BotCommand(
+            command="remove_admin",
+            description="🗑 Удалить администратора (только для владельца)",
+        ),
     ]
     await bot.set_my_commands(admin_commands, scope=BotCommandScopeAllPrivateChats())
     logger.info("[FIX] Bot command menu set (%d commands)", len(admin_commands))

@@ -17,9 +17,7 @@ async def generate_extra_hashtags(post_text: str, count: int) -> list[str]:
 
     provider = get_ai_provider()
     if provider is None:
-        logger.info(
-            "[FIX] generate_extra_hashtags: no AI provider configured, skipping"
-        )
+        logger.info("[FIX] generate_extra_hashtags: no AI provider configured, skipping")
         return []
 
     logger.debug(
@@ -33,7 +31,5 @@ async def generate_extra_hashtags(post_text: str, count: int) -> list[str]:
         logger.info("[FIX] generate_extra_hashtags: generated=%s", result)
         return result
     except Exception as exc:
-        logger.error(
-            "[FIX] generate_extra_hashtags: provider error=%s — returning empty list", exc
-        )
+        logger.error("[FIX] generate_extra_hashtags: provider error=%s — returning empty list", exc)
         return []

@@ -7,8 +7,8 @@ from aiogram.types import Message
 from src.bot.keyboards import announcement_actions_keyboard
 from src.bot.states import ModerationStates
 from src.db.models import User, UserRole
-from src.db.session import AsyncSessionLocal
 from src.db.repository import update_post_text
+from src.db.session import AsyncSessionLocal
 from src.services.pipeline import publish_pending_post
 
 logger = logging.getLogger(__name__)

@@ -6,6 +6,7 @@ Flow:
   → [➕ Добавить новый] or [existing hashtag] → action_keyboard
   → entering_tag → selecting_category (→ entering_category_name) → entering_description → confirming
 """
+
 import logging
 import re
 
@@ -58,9 +59,7 @@ def _format_category_label(cat_name: str, is_required: bool) -> str:
 
 
 @router.callback_query(F.data == "settings:hashtags")
-async def cb_settings_hashtags(
-    callback: CallbackQuery, user: User | None = None
-) -> None:
+async def cb_settings_hashtags(callback: CallbackQuery, user: User | None = None) -> None:
     """Show the hashtag list."""
     telegram_id = callback.from_user.id if callback.from_user else 0
     logger.debug("[hashtag_mgmt] settings:hashtags telegram_id=%d", telegram_id)
@@ -106,9 +105,7 @@ async def cb_ht_new(callback: CallbackQuery, state: FSMContext, user: User | Non
 
 
 @router.message(HashtagMgmtStates.entering_tag, F.text)
-async def msg_entering_tag(
-    message: Message, state: FSMContext, user: User | None = None
-) -> None:
+async def msg_entering_tag(message: Message, state: FSMContext, user: User | None = None) -> None:
     """Validate tag format and proceed to category selection."""
     if not _is_admin_or_owner(user):
         await state.clear()
@@ -127,9 +124,7 @@ async def msg_entering_tag(
         return
 
     normalized = _normalize_tag(tag)
-    logger.debug(
-        "[hashtag_mgmt] entering_tag: raw=%r normalized=%r", tag, normalized
-    )
+    logger.debug("[hashtag_mgmt] entering_tag: raw=%r normalized=%r", tag, normalized)
     await state.update_data(tag=normalized)
 
     async with AsyncSessionLocal() as session:
@@ -149,9 +144,7 @@ async def msg_entering_tag(
 
 
 @router.callback_query(F.data.startswith("cat:pick:"))
-async def cb_cat_pick(
-    callback: CallbackQuery, state: FSMContext, user: User | None = None
-) -> None:
+async def cb_cat_pick(callback: CallbackQuery, state: FSMContext, user: User | None = None) -> None:
     """Save selected category and ask for description."""
     if not _is_admin_or_owner(user):
         await callback.answer("Нет прав.", show_alert=True)
@@ -174,9 +167,7 @@ async def cb_cat_pick(
 
 
 @router.callback_query(F.data == "cat:new")
-async def cb_cat_new(
-    callback: CallbackQuery, state: FSMContext, user: User | None = None
-) -> None:
+async def cb_cat_new(callback: CallbackQuery, state: FSMContext, user: User | None = None) -> None:
     """Ask for a new category name."""
     if not _is_admin_or_owner(user):
         await callback.answer("Нет прав.", show_alert=True)
@@ -205,9 +196,7 @@ async def msg_entering_category_name(
     raw = (message.text or "").strip()
     is_required = raw.startswith("!")
     name = raw.lstrip("!").strip()
-    logger.debug(
-        "[hashtag_mgmt] entering_category_name name=%r is_required=%s", name, is_required
-    )
+    logger.debug("[hashtag_mgmt] entering_category_name name=%r is_required=%s", name, is_required)
 
     if not name:
         await message.answer("Название не может быть пустым. Введите снова:")
@@ -276,9 +265,7 @@ async def msg_entering_description(
 
 
 @router.callback_query(F.data == "ht:save")
-async def cb_ht_save(
-    callback: CallbackQuery, state: FSMContext, user: User | None = None
-) -> None:
+async def cb_ht_save(callback: CallbackQuery, state: FSMContext, user: User | None = None) -> None:
     """Save (create or update) the hashtag."""
     if not _is_admin_or_owner(user):
         await callback.answer("Нет прав.", show_alert=True)
@@ -376,9 +363,7 @@ async def cb_ht_edit_field(
 
 
 @router.callback_query(F.data.startswith("ht:view:"))
-async def cb_ht_view(
-    callback: CallbackQuery, user: User | None = None
-) -> None:
+async def cb_ht_view(callback: CallbackQuery, user: User | None = None) -> None:
     """Show hashtag info with action keyboard."""
     if not _is_admin_or_owner(user):
         await callback.answer("Нет прав.", show_alert=True)
@@ -400,11 +385,7 @@ async def cb_ht_view(
             if cat is not None:
                 category_label = _format_category_label(cat.name, cat.is_required)
 
-    text = (
-        f"🏷 <b>#{tag}</b>\n\n"
-        f"Категория: {category_label}\n"
-        f"Описание: {description}"
-    )
+    text = f"🏷 <b>#{tag}</b>\n\nКатегория: {category_label}\nОписание: {description}"
     await callback.message.answer(
         text,
         reply_markup=hashtag_action_keyboard(hashtag_id),
@@ -414,9 +395,7 @@ async def cb_ht_view(
 
 
 @router.callback_query(F.data.startswith("ht:delete:"))
-async def cb_ht_delete(
-    callback: CallbackQuery, user: User | None = None
-) -> None:
+async def cb_ht_delete(callback: CallbackQuery, user: User | None = None) -> None:
     """Delete hashtag by id and return to the list."""
     if not _is_admin_or_owner(user):
         await callback.answer("Нет прав.", show_alert=True)
@@ -442,9 +421,7 @@ async def cb_ht_delete(
 
 
 @router.callback_query(F.data.startswith("ht:edit:"))
-async def cb_ht_edit(
-    callback: CallbackQuery, state: FSMContext, user: User | None = None
-) -> None:
+async def cb_ht_edit(callback: CallbackQuery, state: FSMContext, user: User | None = None) -> None:
     """Start editing an existing hashtag — prefill state with current values."""
     if not _is_admin_or_owner(user):
         await callback.answer("Нет прав.", show_alert=True)
