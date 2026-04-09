@@ -28,15 +28,19 @@ async def test_engine():
 async def session(test_engine) -> AsyncSession:
     """
     Provide a session that is rolled back after each test (no persistent state).
+
+    Uses join_transaction_mode="create_savepoint" so that any session.commit()
+    calls inside tests create a SAVEPOINT instead of committing the outer
+    transaction, which is rolled back unconditionally after each test.
     """
-    async_session = async_sessionmaker(
-        bind=test_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
-    async with test_engine.begin() as conn:
-        # Use a savepoint so we can rollback after each test
-        async with async_session(bind=conn) as sess:
-            await conn.begin_nested()
+    async with test_engine.connect() as conn:
+        await conn.begin()
+        async_session = async_sessionmaker(
+            bind=conn,
+            class_=AsyncSession,
+            expire_on_commit=False,
+            join_transaction_mode="create_savepoint",
+        )
+        async with async_session() as sess:
             yield sess
-            await conn.rollback()
+        await conn.rollback()
