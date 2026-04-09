@@ -7,7 +7,7 @@ from aiogram.types import TelegramObject, Update
 
 from src.config import settings
 from src.db.models import UserRole
-from src.db.repository import get_or_create_user
+from src.db.repository import get_or_create_user, get_user
 from src.db.session import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
@@ -51,31 +51,36 @@ class AuthMiddleware(BaseMiddleware):
         )
 
         async with AsyncSessionLocal() as session:
-            # Determine role for new users
-            role = UserRole.owner if telegram_id in owner_ids else UserRole.admin
-
-            db_user, created = await get_or_create_user(
-                session=session,
-                telegram_id=telegram_id,
-                username=tg_user.username,
-                role=role,
-            )
-            await session.commit()
-
-            if created:
-                logger.info(
-                    "AuthMiddleware: new user registered telegram_id=%d role=%s",
-                    telegram_id,
-                    role,
+            if telegram_id in owner_ids:
+                # Auto-register owners on first contact
+                db_user, created = await get_or_create_user(
+                    session=session,
+                    telegram_id=telegram_id,
+                    username=tg_user.username,
+                    role=UserRole.owner,
                 )
-
-            # Block users that are not owners and not already registered as admin/owner
-            if db_user.role not in (UserRole.owner, UserRole.admin):
-                logger.warning(
-                    "AuthMiddleware: unauthorized user telegram_id=%d, dropping update",
-                    telegram_id,
-                )
-                return None
+                await session.commit()
+                if created:
+                    logger.info(
+                        "AuthMiddleware: new owner registered telegram_id=%d",
+                        telegram_id,
+                    )
+            else:
+                # Non-owners must already exist in DB (manually granted admin access)
+                db_user = await get_user(session, telegram_id)
+                if db_user is None:
+                    logger.warning(
+                        "AuthMiddleware: unknown user telegram_id=%d, dropping update",
+                        telegram_id,
+                    )
+                    return None
+                if db_user.role not in (UserRole.owner, UserRole.admin):
+                    logger.warning(
+                        "AuthMiddleware: unauthorized user telegram_id=%d role=%s, dropping update",
+                        telegram_id,
+                        db_user.role,
+                    )
+                    return None
 
             logger.debug(
                 "AuthMiddleware: authorized telegram_id=%d role=%s",

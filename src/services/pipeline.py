@@ -337,11 +337,11 @@ def _sort_and_limit_hashtags(
         logger.debug("[pipeline] _sort_and_limit_hashtags: no matched tags, returning empty list")
         return []
     required_set = {
-        row.tag
+        row.tag.lower()
         for row in hashtag_rows
         if row.category is not None and row.category.is_required
     }
-    sorted_tags = sorted(matched_tags, key=lambda t: t not in required_set)
+    sorted_tags = sorted(matched_tags, key=lambda t: t.lower() not in required_set)
     final = sorted_tags[:5]
     logger.debug(
         "[FIX] [pipeline] _sort_and_limit_hashtags: final=%d tags=%s", len(final), final

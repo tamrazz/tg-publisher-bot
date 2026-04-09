@@ -1,7 +1,7 @@
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -242,7 +242,9 @@ async def get_hashtag_by_id(session: AsyncSession, hashtag_id: int) -> Hashtag |
 
 async def get_hashtag_by_tag(session: AsyncSession, tag: str) -> Hashtag | None:
     logger.debug("get_hashtag_by_tag: tag=%r", tag)
-    result = await session.execute(select(Hashtag).where(Hashtag.tag == tag))
+    result = await session.execute(
+        select(Hashtag).where(func.lower(Hashtag.tag) == tag.lower())
+    )
     return result.scalar_one_or_none()
 
 
