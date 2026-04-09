@@ -70,7 +70,10 @@ async def _transcript_via_api(video_id: str) -> str | None:
             # 1. Try preferred languages
             try:
                 entries = api.fetch(video_id, languages=["ru", "en"])
-                logger.info("[FIX] _transcript_via_api: got preferred-lang transcript video_id=%r", video_id)
+                logger.info(
+                    "[FIX] _transcript_via_api: got preferred-lang transcript video_id=%r",
+                    video_id,
+                )
                 return list(entries)
             except Exception as exc_preferred:
                 logger.warning(
@@ -90,12 +93,16 @@ async def _transcript_via_api(video_id: str) -> str | None:
                 if available:
                     t = available[0]
                     logger.info(
-                        "[FIX] _transcript_via_api: using fallback transcript lang=%r is_generated=%s",
+                        "[FIX] _transcript_via_api: fallback transcript"
+                        " lang=%r is_generated=%s",
                         t.language_code,
                         t.is_generated,
                     )
                     return list(t.fetch())
-                logger.warning("[FIX] _transcript_via_api: list() returned no transcripts video_id=%r", video_id)
+                logger.warning(
+                    "[FIX] _transcript_via_api: list() returned no transcripts video_id=%r",
+                    video_id,
+                )
             except Exception as exc_list:
                 logger.warning(
                     "[FIX] _transcript_via_api: list() failed video_id=%r: %s",
@@ -109,9 +116,15 @@ async def _transcript_via_api(video_id: str) -> str | None:
         if not entries:
             logger.warning("[FIX] _transcript_via_api: no transcripts found video_id=%r", video_id)
             return None
-        logger.debug("[FIX] _transcript_via_api: snippet type=%s", type(entries[0]).__name__ if entries else "N/A")
+        logger.debug(
+            "[FIX] _transcript_via_api: snippet type=%s",
+            type(entries[0]).__name__ if entries else "N/A",
+        )
         text = " ".join(entry.text for entry in entries)
-        logger.info("[FIX] _transcript_via_api: success video_id=%r text_len=%d", video_id, len(text))
+        logger.info(
+            "[FIX] _transcript_via_api: success video_id=%r text_len=%d",
+            video_id, len(text),
+        )
         return text
     except Exception as exc:
         logger.warning("[FIX] _transcript_via_api: failed video_id=%r: %s", video_id, exc)
@@ -155,7 +168,8 @@ async def _transcript_via_whisper(url: str) -> str | None:
                 mp3_path = os.path.join(tmpdir, files[0])
 
             logger.debug(
-                "[FIX] _transcript_via_whisper: transcribing with faster-whisper audio_path=%r model=%r",
+                "[FIX] _transcript_via_whisper: transcribing with"
+                " faster-whisper audio_path=%r model=%r",
                 mp3_path,
                 settings.whisper_model,
             )

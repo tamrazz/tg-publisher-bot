@@ -313,7 +313,9 @@ async def test_youtube_extractor_falls_back_to_any_language(monkeypatch) -> None
     import src.extractors.youtube as yt_module
 
     monkeypatch.setattr(yt_module, "_transcript_via_api", lambda video_id: _async_none())
-    monkeypatch.setattr(yt_module, "_transcript_via_whisper", lambda url: _async_result("Hola mundo"))
+    monkeypatch.setattr(
+        yt_module, "_transcript_via_whisper", lambda url: _async_result("Hola mundo")
+    )
 
     extractor = YouTubeExtractor()
     result = await extractor.extract("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
