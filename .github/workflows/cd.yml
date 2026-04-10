@@ -60,17 +60,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Copy config files to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: "docker-compose.production.yml,.env.example"
-          target: /srv/projects/tg-publisher-bot/app/
-
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         env:
@@ -93,7 +82,20 @@ jobs:
           envs: BOT_TOKEN,TELEGRAM_CHANNEL_ID,ANTHROPIC_API_KEY,OPENAI_API_KEY,GEMINI_API_KEY,DEEPSEEK_API_KEY,GROQ_API_KEY,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,OWNER_IDS,GITHUB_TOKEN
           script: |
             set -e
+            mkdir -p /srv/projects/tg-publisher-bot/app
             cd /srv/projects/tg-publisher-bot/app
+
+            echo "Downloading config files from GitHub..."
+            curl -fsSL \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github.raw+json" \
+              "https://api.github.com/repos/${{ github.repository }}/contents/docker-compose.production.yml?ref=${{ github.sha }}" \
+              -o docker-compose.production.yml
+            curl -fsSL \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github.raw+json" \
+              "https://api.github.com/repos/${{ github.repository }}/contents/.env.example?ref=${{ github.sha }}" \
+              -o .env.example
 
             echo "Generating .env from template..."
             envsubst < .env.example > .env
